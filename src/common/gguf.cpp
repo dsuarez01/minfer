@@ -1,5 +1,6 @@
 #include "gguf.hpp"
 #include <fcntl.h>
+#include <cstring>
 #include <iostream>
 #include <sys/mman.h>
 #include <sys/stat.h>

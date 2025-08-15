@@ -4,16 +4,6 @@
 #include <unordered_map>
 #include <any>
 
-class Module {
-protected:
-    RootModule& root;
-    void add_parameter(const Tensor& tensor); // wrapper just in case we need to debug
-public:
-    Module(RootModule& root);
-    virtual ~Module() = default;
-    virtual void forward(Pool& pool) = 0;
-};
-
 class RootModule {
 private:
     std::vector<const Tensor*> parameters;
@@ -25,6 +15,16 @@ public:
     Device get_device() const;
     void to(const Device device);
     virtual void forward() = 0;
+};
+
+class Module {
+protected:
+    RootModule& root;
+    void add_parameter(const Tensor& tensor); // wrapper just in case we need to debug
+public:
+    Module(RootModule& root);
+    virtual ~Module() = default;
+    virtual void forward(Pool& pool) = 0;
 };
 
 // Base classes, pure virtual forward
