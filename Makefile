@@ -9,8 +9,9 @@ $(BUILD_DIR) $(LOGS_DIR):
 
 # cross-platform compilation tests
 compile-test: $(BUILD_DIR)
-	@$(CXX) $(CXXFLAGS) -c $(COMMON_SOURCES) -o $(BUILD_DIR)/common_test.o
-	@echo "Compilation test passed"
+	@for src in $(COMMON_SOURCES); do \
+		$(CXX) $(CXXFLAGS) -c $$src -o $(BUILD_DIR)/$$(basename $$src .cpp).o; \
+	done
 
 # unit tests for opn. correctness
 TEST_SOURCES := $(wildcard src/tests/test_*.cpp)
@@ -21,8 +22,15 @@ $(BUILD_DIR)/test_%: src/tests/test_%.cpp $(COMMON_SOURCES) | $(BUILD_DIR)
 
 unit-tests: $(UNIT_TESTS)
 	@if [ -n "$(UNIT_TESTS)" ]; then \
-		for test in $(UNIT_TESTS); do $$test || exit 1; done; \
-		echo "All tests passed"; \
+		passed=0; total=0; \
+		for test in $(UNIT_TESTS); do \
+			total=$$((total+1)); \
+			if $$test; then \
+				passed=$$((passed+1)); \
+			fi; \
+		done; \
+		echo "$$passed of $$total tests passed"; \
+		[ $$passed -eq $$total ] || exit 1; \
 	fi
 
 # dev tools (e.g. local testing w models)
