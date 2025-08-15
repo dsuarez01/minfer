@@ -29,13 +29,14 @@ struct Tensor {
     uint64_t size = 0;
     mutable Device device = Device::CPU;
     
+    void to(Device target_device);
     json to_json() const;
 };
 
 struct ModelData {
     json metadata;
     json tensor_metadata;
-    std::unordered_map<std::string, Tensor> tensors;
+    std::unordered_map<std::string, std::shared_ptr<Tensor>> tensors;
     int from_file(const std::string& filename);
 };
 
@@ -51,12 +52,12 @@ struct RuntimeParams {
         : max_seq_len(max_seq_len), top_k(top_k), seed(seed), temperature(temperature), top_p(top_p) {}
 };
 
-struct Qwen3Config {
+struct Config {
     // model params
     uint64_t vocab_size, model_max_seq_len, embed_dim, n_layers, n_heads, n_kv_heads, head_dim, ffn_dim;
     float rms_norm_eps, theta;
-    bool is_moe;
     uint32_t moe_top_k, n_experts, expert_dim;
+    bool is_moe;
 
     // tokenizer params
     std::string tokenizer_model, tokenizer_pre, chat_template;
@@ -69,7 +70,7 @@ struct Qwen3Config {
     uint32_t user_max_seq_len, top_k, seed;
     float temperature, top_p;
     
-    Qwen3Config(const ModelData& model_data, const RuntimeParams& runtime_params);
+    Config(const ModelData& model_data, const RuntimeParams& runtime_params);
 };
 
 struct Pool {
@@ -82,7 +83,7 @@ struct Pool {
     int *active_experts;                           // MoE indices (TODO)
     float *logits;                                 // output
     
-    Pool(const Qwen3Config& config);
+    Pool(const Config& config);
     ~Pool();
     void to(Device device);
 };

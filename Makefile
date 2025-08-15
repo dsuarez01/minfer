@@ -1,3 +1,4 @@
+# >= c++17 required
 CXX = g++
 CXXFLAGS = -std=c++17 -I. -Iexternal -Isrc
 BUILD_DIR = build

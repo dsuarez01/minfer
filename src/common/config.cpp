@@ -92,6 +92,13 @@ std::optional<DataType> tensor_to_data_type(TensorType t_type) {
     }
 }
 
+void Tensor::to(Device target_device) {
+    if (device == target_device) return;
+    // Copy data from current device to target device (depends on what target_device is so 
+    // this is the interface to check)
+    device = target_device;
+}
+
 int ModelData::from_file(const std::string& filename) {
     GGUFFile gguf_file;
     if (gguf_file.from_file(filename) == -1) {
@@ -104,58 +111,57 @@ int ModelData::from_file(const std::string& filename) {
     }
 
     for (const TensorInfo& info : gguf_file.tensor_infos) {
-        Tensor tensor;
-        tensor.name = info.name.string;
+        auto tensor = std::make_shared<Tensor>();
+        tensor->name = info.name.string;
 
         auto dtype = tensor_to_data_type(info.type);
         if (!dtype) {
             std::cerr << "[Bad file] unsupported tensor type: " << tensor_type_to_str(info.type) << std::endl;
             return -1;
         }
-        tensor.dtype = *dtype;
+        tensor->dtype = *dtype;
         
         if (info.dimensions.size() == 0 || info.dimensions.size() > 4) {
-            std::cerr << "[Bad file] tensor " << tensor.name << " has 0 or > 4 dimensions" << std::endl;
+            std::cerr << "[Bad file] tensor " << tensor->name << " has 0 or > 4 dimensions" << std::endl;
             return -1;
         }
 
         uint64_t element_count = 1;
         for (uint64_t dim : info.dimensions) {
             if (dim == 0) {
-                std::cerr << "[Bad file] tensor " << tensor.name << " has value 0 in one of the dimensions" << std::endl;
+                std::cerr << "[Bad file] tensor " << tensor->name << " has value 0 in one of the dimensions" << std::endl;
                 return -1;
             }
             element_count *= dim;
         }
-        tensor.size = element_count * dtype_size(tensor.dtype);
+        tensor->size = element_count * dtype_size(tensor->dtype);
 
         // shape [3,4] -> [1,1,3,4]
-        tensor.shape.fill(1);
+        tensor->shape.fill(1);
         size_t start_idx = 4 - info.dimensions.size();
         for (size_t i = 0; i < info.dimensions.size(); ++i) {
-            tensor.shape[start_idx + i] = info.dimensions[i];
+            tensor->shape[start_idx + i] = info.dimensions[i];
         }
 
-        if (info.offset + tensor.size > gguf_file.tensor_data_size) {
-            std::cerr << "[Bad file] tensor " << tensor.name << " extends beyond file bounds" << std::endl;
+        if (info.offset + tensor->size > gguf_file.tensor_data_size) {
+            std::cerr << "[Bad file] tensor " << tensor->name << " extends beyond file bounds" << std::endl;
             return -1;
         }
 
-        tensor.data = gguf_file.tensor_data + info.offset;
-        tensor.device = Device::CPU;
-        tensors[tensor.name] = tensor;
+        tensor->data = gguf_file.tensor_data + info.offset;
+        tensor->device = Device::CPU;
+        tensors[tensor->name] = tensor;
         
-        tensor_metadata[tensor.name] = tensor.to_json();
+        tensor_metadata[tensor->name] = tensor->to_json();
     }
     return 0;
 }
 
-Qwen3Config::Qwen3Config(const ModelData& model_data, const RuntimeParams& runtime_params) {
+Config::Config(const ModelData& model_data, const RuntimeParams& runtime_params) {
     const std::string& arch = model_data.metadata.at("general.architecture").get<std::string>();
     if (ModelSupport::SUPPORTED_ARCHITECTURES.find(arch) == ModelSupport::SUPPORTED_ARCHITECTURES.end()) {
         throw std::invalid_argument("Unsupported architecture: " + arch);
     }
-    is_moe = (arch == "qwen3moe");
 
     std::string prefix = arch + ".";
     const std::string ggml_prefix = "tokenizer.ggml.";
@@ -173,9 +179,10 @@ Qwen3Config::Qwen3Config(const ModelData& model_data, const RuntimeParams& runti
     theta = model_data.metadata.value(prefix + "rope.freq_base", 10000.0f);
     
     // optional moe, defaults to non-moe values
-    moe_top_k = model_data.metadata.value(prefix + "expert_used_count", 0u);
     n_experts = model_data.metadata.value(prefix + "expert_count", 0u);
+    moe_top_k = model_data.metadata.value(prefix + "expert_used_count", 0u);
     expert_dim = model_data.metadata.value(prefix + "expert_feed_forward_length", 0u);
+    is_moe = (n_experts > 0u);
 
     // required
     tokenizer_model = model_data.metadata.at(ggml_prefix + "model").get<std::string>();
@@ -197,7 +204,7 @@ Qwen3Config::Qwen3Config(const ModelData& model_data, const RuntimeParams& runti
     seed = runtime_params.seed;
 }
 
-Pool::Pool(const Qwen3Config& config) {
+Pool::Pool(const Config& config) {
     device = Device::CPU;
 
     // activations
@@ -218,9 +225,9 @@ Pool::Pool(const Qwen3Config& config) {
     logits = new float[config.vocab_size];
     
     // MoE buffers, nullptr for dense models
-    moe_weights = config.is_moe && config.n_experts > 0 ? new float[config.n_experts] : nullptr;
-    active_experts = config.is_moe && config.moe_top_k > 0 ? new int[config.moe_top_k] : nullptr;
-    active_experts_weights = config.is_moe && config.n_experts > 0 ? new float[config.moe_top_k * config.expert_dim] : nullptr;
+    moe_weights = config.is_moe && config.n_experts > 0u ? new float[config.n_experts] : nullptr;
+    active_experts = config.is_moe && config.moe_top_k > 0u ? new int[config.moe_top_k] : nullptr;
+    active_experts_weights = config.is_moe && config.n_experts > 0u ? new float[config.moe_top_k * config.expert_dim] : nullptr;
 }
 
 Pool::~Pool() {
