@@ -9,6 +9,7 @@ void Module::add_parameter(const Tensor& tensor) {
 
 ////////////////// RootModule //////////////////
 void RootModule::add_parameter(const Tensor& tensor) {
+
     parameters.push_back(&tensor);
 }
 
@@ -61,29 +62,17 @@ DBBlock::DBBlock(RootModule& root, uint64_t layer_idx, uint64_t n_heads, uint64_
     add_parameter(tensors.attn_norm);
     add_parameter(tensors.ffn_norm);
     
-    if (!is_moe_layer && tensors.w1 && tensors.w2 && tensors.w3) {
-        add_parameter(*tensors.w1);
-        add_parameter(*tensors.w2);
-        add_parameter(*tensors.w3);
+    if (!is_moe_layer && tensors.ffn_gate && tensors.ffn_down && tensors.ffn_up) {
+        add_parameter(*tensors.ffn_gate);
+        add_parameter(*tensors.ffn_down);
+        add_parameter(*tensors.ffn_up);
     }
 
-    if (is_moe_layer && tensors.gate) {
-        add_parameter(*tensors.gate);
-        if (tensors.expert_w1) {
-            for (const auto& expert_w : *tensors.expert_w1) {
-                add_parameter(expert_w);
-            }
-        }
-        if (tensors.expert_w2) {
-            for (const auto& expert_w : *tensors.expert_w2) {
-                add_parameter(expert_w);
-            }
-        }
-        if (tensors.expert_w3) {
-            for (const auto& expert_w : *tensors.expert_w3) {
-                add_parameter(expert_w);
-            }
-        }
+    if (is_moe_layer && tensors.moe_gate) {
+        add_parameter(*tensors.moe_gate);
+        if (tensors.expert_gate) add_parameter(*tensors.expert_gate);
+        if (tensors.expert_down) add_parameter(*tensors.expert_down);  
+        if (tensors.expert_up) add_parameter(*tensors.expert_up);
     }
 }
 

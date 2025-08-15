@@ -53,9 +53,11 @@ struct RuntimeParams {
 
 struct Qwen3Config {
     // model params
-    uint64_t vocab_size, model_max_seq_len, embed_dim, n_layers, n_heads, n_kv_heads, head_dim, hidden_dim;
+    uint64_t vocab_size, model_max_seq_len, embed_dim, n_layers, n_heads, n_kv_heads, head_dim, ffn_dim;
     float rms_norm_eps, theta;
-    
+    bool is_moe;
+    uint32_t moe_top_k, n_experts, expert_dim;
+
     // tokenizer params
     std::string tokenizer_model, tokenizer_pre, chat_template;
     std::vector<std::string> tokens, merges;
@@ -71,7 +73,7 @@ struct Qwen3Config {
 };
 
 struct Pool {
-    Device device = Device::CPU;
+    Device device;
     
     float *x, *xb, *xb2;                           // activations
     float *hb, *hb2;                               // ffn

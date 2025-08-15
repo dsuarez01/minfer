@@ -155,21 +155,29 @@ Qwen3Config::Qwen3Config(const ModelData& model_data, const RuntimeParams& runti
     if (ModelSupport::SUPPORTED_ARCHITECTURES.find(arch) == ModelSupport::SUPPORTED_ARCHITECTURES.end()) {
         throw std::invalid_argument("Unsupported architecture: " + arch);
     }
-    
+    is_moe = (arch == "qwen3moe");
+
     std::string prefix = arch + ".";
     const std::string ggml_prefix = "tokenizer.ggml.";
     const std::string tokenizer_prefix = "tokenizer.";
     
+    // required
     model_max_seq_len = model_data.metadata.at(prefix + "context_length").get<uint64_t>();
     embed_dim = model_data.metadata.at(prefix + "embedding_length").get<uint64_t>();
     n_layers = model_data.metadata.at(prefix + "block_count").get<uint64_t>();
     n_heads = model_data.metadata.at(prefix + "attention.head_count").get<uint64_t>();
     n_kv_heads = model_data.metadata.at(prefix + "attention.head_count_kv").get<uint64_t>();
     head_dim = embed_dim / n_heads;
-    hidden_dim = model_data.metadata.at(prefix + "feed_forward_length").get<uint64_t>();
-    rms_norm_eps = model_data.metadata.at(prefix + "attention.layer_norm_rms_epsilon").get<float>();
-    theta = model_data.metadata.at(prefix + "rope.freq_base").get<float>();
+    ffn_dim = model_data.metadata.at(prefix + "feed_forward_length").get<uint64_t>();
+    rms_norm_eps = model_data.metadata.value(prefix + "attention.layer_norm_rms_epsilon", 1e-6f);
+    theta = model_data.metadata.value(prefix + "rope.freq_base", 10000.0f);
     
+    // optional moe, defaults to non-moe values
+    moe_top_k = model_data.metadata.value(prefix + "expert_used_count", 0u);
+    n_experts = model_data.metadata.value(prefix + "expert_count", 0u);
+    expert_dim = model_data.metadata.value(prefix + "expert_feed_forward_length", 0u);
+
+    // required
     tokenizer_model = model_data.metadata.at(ggml_prefix + "model").get<std::string>();
     tokenizer_pre = model_data.metadata.at(ggml_prefix + "pre").get<std::string>();
     tokens = model_data.metadata.at(ggml_prefix + "tokens").get<std::vector<std::string>>();
@@ -189,15 +197,17 @@ Qwen3Config::Qwen3Config(const ModelData& model_data, const RuntimeParams& runti
     seed = runtime_params.seed;
 }
 
-Pool::Pool(const Qwen3Config& config) : device(Device::CPU) {
+Pool::Pool(const Qwen3Config& config) {
+    device = Device::CPU;
+
     // activations
     x = new float[config.embed_dim];
     xb = new float[config.embed_dim];
     xb2 = new float[config.embed_dim];
     
-    // FFN
-    hb = new float[config.hidden_dim];
-    hb2 = new float[config.hidden_dim];
+    // FFN - always needed
+    hb = new float[config.ffn_dim];
+    hb2 = new float[config.ffn_dim];
     
     // attn
     q = new float[config.n_heads * config.head_dim];
@@ -207,10 +217,10 @@ Pool::Pool(const Qwen3Config& config) : device(Device::CPU) {
     
     logits = new float[config.vocab_size];
     
-    // MoE (nullptr for dense models)
-    moe_weights = nullptr;
-    active_experts_weights = nullptr;
-    active_experts = nullptr;
+    // MoE buffers, nullptr for dense models
+    moe_weights = config.is_moe && config.n_experts > 0 ? new float[config.n_experts] : nullptr;
+    active_experts = config.is_moe && config.moe_top_k > 0 ? new int[config.moe_top_k] : nullptr;
+    active_experts_weights = config.is_moe && config.n_experts > 0 ? new float[config.moe_top_k * config.expert_dim] : nullptr;
 }
 
 Pool::~Pool() {

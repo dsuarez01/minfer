@@ -1,6 +1,5 @@
 #include "model.hpp"
 
-// refactor at some point to accomodate MoE models (need to probably adjust config as well)
 Qwen3Model::Qwen3Model(const ModelData& model_data, const RuntimeParams& run_params)
     : RootModule(), 
       config(model_data, run_params),
@@ -21,27 +20,32 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RuntimeParams& run_par
         
         DBTensors layer_tensors{
             tensors.at(layer_prefix + "attn_q.weight"),
-            tensors.at(layer_prefix + "attn_k.weight"),
+            tensors.at(layer_prefix + "attn_k.weight"), 
             tensors.at(layer_prefix + "attn_v.weight"),
             tensors.at(layer_prefix + "attn_output.weight"),
             tensors.at(layer_prefix + "attn_q_norm.weight"),
             tensors.at(layer_prefix + "attn_k_norm.weight"),
-            &tensors.at(layer_prefix + "ffn_gate.weight"),
-            &tensors.at(layer_prefix + "ffn_down.weight"),
-            &tensors.at(layer_prefix + "ffn_up.weight"),
-            nullptr,  // gate (MoE router) - nullptr for dense layers
-            nullptr,  // expert_w1 - see above
-            nullptr,  // expert_w2 - see above
-            nullptr,  // expert_w3 - see above
+            
+            // dense FFN tensors (nullptr if MoE)
+            config.is_moe ? nullptr : &tensors.at(layer_prefix + "ffn_gate.weight"),
+            config.is_moe ? nullptr : &tensors.at(layer_prefix + "ffn_down.weight"), 
+            config.is_moe ? nullptr : &tensors.at(layer_prefix + "ffn_up.weight"),
+            
+            // MoE tensors (nullptr if dense)
+            config.is_moe ? &tensors.at(layer_prefix + "ffn_gate_inp.weight") : nullptr,
+            config.is_moe ? &tensors.at(layer_prefix + "ffn_gate_exps.weight") : nullptr,
+            config.is_moe ? &tensors.at(layer_prefix + "ffn_down_exps.weight") : nullptr,
+            config.is_moe ? &tensors.at(layer_prefix + "ffn_up_exps.weight") : nullptr,
+            
             tensors.at(layer_prefix + "attn_norm.weight"),
             tensors.at(layer_prefix + "ffn_norm.weight")
         };
         
         auto layer = std::make_unique<Qwen3DB>(
             *this, i, config.n_heads, config.n_kv_heads, config.head_dim,
-            config.embed_dim, config.hidden_dim, config.rms_norm_eps,
+            config.embed_dim, config.ffn_dim, config.rms_norm_eps,
             config.user_max_seq_len, config.theta,
-            0, 0, false,  // MoE params: n_experts=0, n_active_experts=0, is_moe_layer=false
+            config.n_experts, config.moe_top_k, config.is_moe,
             layer_tensors
         );
         

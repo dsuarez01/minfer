@@ -73,19 +73,19 @@ struct DBTensors {
     const Tensor& k_norm;           // k_norm_weight
     
     // FFN (nullptr if MoE)
-    const Tensor* w1;               // gate_proj
-    const Tensor* w2;               // down_proj
-    const Tensor* w3;               // up_proj
+    const Tensor* ffn_gate;               // gate_proj
+    const Tensor* ffn_down;               // down_proj
+    const Tensor* ffn_up;                 // up_proj
     
     // MoE (nullptr if dense)
-    const Tensor* gate;                    // Router weights
-    const std::vector<Tensor>* expert_w1;  // Per-expert gate weights
-    const std::vector<Tensor>* expert_w2;  // Per-expert down weights  
-    const std::vector<Tensor>* expert_w3;  // Per-expert up weights
+    const Tensor* moe_gate;                  // Router weights (ffn_gate_inp.weight)
+    const Tensor* expert_gate;               // all expert gate weights (ffn_gate_exps.weight)
+    const Tensor* expert_down;               // all expert down weights (ffn_down_exps.weight)
+    const Tensor* expert_up;                 // all expert up weights (ffn_up_exps.weight)
     
     // LN
-    const Tensor& attn_norm;           // input_layernorm
-    const Tensor& ffn_norm;            // post_attention_layernorm  
+    const Tensor& attn_norm;           // Attn layernorm (attn_norm.weight)
+    const Tensor& ffn_norm;            // FFN layernorm (ffn_norm.weight)
 };
 
 class DBBlock : public Module {
