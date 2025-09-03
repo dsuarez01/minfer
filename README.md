@@ -1,13 +1,15 @@
 CPU support in progress. Currently, this project supports non-sharded Qwen3 GGUF model files.
 
 External dependencies:
-- UTF8CPP [https://github.com/nemtrif/utfcpp]
-- PCRE2 [https://github.com/PCRE2Project/pcre2]
-- Minja [https://github.com/google/minja]
+- [UTF8CPP](https://github.com/nemtrif/utfcpp)
+- [PCRE2](https://github.com/PCRE2Project/pcre2)
+- [Minja](https://github.com/google/minja)
 
 Current progress so far:
 
-- Example output with the Qwen3-0.6B-FP32 GGUF model (available at https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32) on M2 Pro chip **(TO-DO: add usage information for generate)**:
+
+
+- Example output with the Qwen3-0.6B-FP32 GGUF model (available [here](https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32)) on M2 Pro chip **(TO-DO: add usage information for generate)**:
 
 ```
 Model: ./gguf/Qwen3-0.6B-FP32.gguf
