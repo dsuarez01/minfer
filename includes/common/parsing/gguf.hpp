@@ -1,11 +1,9 @@
-#ifndef GGUF_HPP
-#define GGUF_HPP
+#pragma once
 
 #include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
-#include <regex>
 
 enum class TensorType: uint32_t {
     // removed prefix GGML_TYPE_
@@ -214,4 +212,3 @@ struct GGUFFile {
     size_t tensor_data_size;
     int from_file(const std::string& filename);
 };
-#endif

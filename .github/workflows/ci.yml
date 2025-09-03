@@ -1,3 +1,5 @@
+name: CI
+
 on:
   push:
     branches: [main, feature/*]
@@ -5,21 +7,20 @@ on:
     branches: [main, feature/*]
 
 jobs:
-  compile:
+  test:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     
     steps:
-      - uses: actions/checkout@v5
-      - name: Test compilation
-        run: make compile-test
-
-  unit-tests:
-    runs-on: macos-latest
-    
-    steps:
-      - uses: actions/checkout@v5
-      - name: Run unit tests
-        run: make unit-tests
+      - uses: actions/checkout@v4
+      
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      
+      - name: Build
+        run: cmake --build build --parallel
+      
+      - name: Run ops tests
+        run: ./build/test_ops_runner

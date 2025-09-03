@@ -1,10 +1,12 @@
-#include "gguf.hpp"
+#include "common/parsing/gguf.hpp"
+
 #include <fcntl.h>
 #include <cstring>
 #include <iostream>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <regex>
 
 std::string tensor_type_to_str(TensorType t_type) {
     switch (t_type) {
@@ -47,7 +49,7 @@ std::string tensor_type_to_str(TensorType t_type) {
 
 bool is_valid_gguf_key(const std::string& key) {
     return key.length() <= 65535 && 
-           std::regex_match(key, std::regex("^[a-z0-9_]+(?:\\.[a-z0-9_]+)*$"));
+           std::regex_match(key, std::regex("^[a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)*$"));
 }
 
 template <typename T>
