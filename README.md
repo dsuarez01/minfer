@@ -75,11 +75,12 @@ The solution to this was to simply select a model with decoder block tensors (sp
 
 Due to the unified memory architecture on Apple silicon, where a single memory controller serves both the CPU and GPU, the calculation of the speed-of-light is identical for the GPU. There are limitations that will prevent us from achieving this sort of throughput: throttling and system/scheduling overhead come to mind. However, it still serves as a useful bound for how efficiently we are serving memory to the computational units.
 
-List of improvements to be made (optimizations to be implemented, etc.): **(TO-DO: complete me!)**
+#### Checklist of Improvements (optimizations to be implemented, etc.):
 - [ ] Threading in the FP32 matmul implementation
 - [ ] Explicit SIMD for the FP16, BF16 matmuls (with -O3 the compiler might already implement this)
 - [ ] Head-level and expert-level parallelization
 - [ ] Quantizing KV cache
 - [ ] Implementing operations for the GPU (expand this once relevant)
+- [ ] Refactor loader, tokenizer, chat template handling
 
 Disclaimer: use the loader with reputable model providers on HuggingFace, e.g. Unsloth). This is meant to be an educational implementation, although you are welcome to fork and try it out for yourself. Note that I am not responsible for the consequences of any misuse.
