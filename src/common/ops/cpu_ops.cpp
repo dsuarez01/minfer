@@ -135,6 +135,7 @@ namespace cpu {
 
     template<>
     void matmul<float, float_tag>(float* x_out, const float* x_in, const float* weight, int d_out, int d_in) {
+        #pragma omp parallel for
         for (int i=0; i<d_out; i++) {
             float cur_sum = 0.0f;
             for (int j=0; j<d_in; j++) {
