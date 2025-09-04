@@ -10,27 +10,20 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+      # slightly cleaner than force install
+        include:
+          - os: ubuntu-latest
+            container: gcc:14
+          - os: macos-latest
+            container: null
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     
     steps:
       - uses: actions/checkout@v5
-      
-      # weird issue with cosf, sinf, etc. not being in the std:: namespace
-      # for GCC < 14
-      - name: Install GCC 14 (Ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-14 g++-14
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
       - name: Configure CMake
         run: cmake -B build
-      
       - name: Build
         run: cmake --build build --parallel
-      
       - name: Run ops tests
         run: ./build/test_ops_runner
