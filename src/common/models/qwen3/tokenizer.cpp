@@ -237,7 +237,7 @@ std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
 std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
     if (token.empty()) return {};
     
-    // Start with individual bytes as strings
+    // BPE: start with individual bytes as strings
     std::vector<std::string> word;
     word.reserve(token.size());
     for (unsigned char byte : token) {

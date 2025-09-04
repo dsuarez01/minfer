@@ -110,6 +110,6 @@ void BaseModel::generate(std::string& input_text) {
     // total mem reads
     size_t total_bytes = (total_passes*(this->get_size_bytes() + run_state->buffer_bytes)) + total_kv_bytes;
     
-    stats->bandwidth = total_bytes /(1<<30)/(throughput_time + prefill_time); // mem bandwidth in GiB/sec
+    stats->bandwidth = total_bytes / 1e9 /(throughput_time + prefill_time); // mem bandwidth in GB/sec
     stats->print_stats();
 }

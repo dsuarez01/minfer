@@ -300,7 +300,7 @@ RunState::RunState(const std::shared_ptr<Config> config) {
     buffer_bytes += 2*config->n_kv_heads*config->d_head*sizeof(float); // k,v
     buffer_bytes += config->n_heads*config->user_max_seq_len*sizeof(float); // att
     buffer_bytes += std::max(config->n_experts,1)*sizeof(float); // moe_scores
-    buffer_bytes += std::max(config->n_active_experts,1)*sizeof(uint64_t); // active_experts
+    buffer_bytes += std::max(config->n_active_experts,1)*sizeof(int); // active_experts
     buffer_bytes += 2*std::max(config->n_active_experts,1)*sizeof(float); // active_expert_scores/weights
     buffer_bytes += config->vocab_size*sizeof(float);
 
@@ -330,5 +330,5 @@ void GenStats::print_stats() const {
     std::cout << "Number of tokens generated: " << this->num_tokens_gen << " toks\n"
               << "Prefill time: " << std::fixed << std::setprecision(3) << this->prefill_time << " sec(s)\n" 
               << "Generation throughput: " << std::setprecision(2) << this->throughput << " tok/sec\n"
-              << "Mem. Bandwidth: " << std::setprecision(3) << this->bandwidth << " GiB/sec" << std::endl;
+              << "Mem. Bandwidth: " << std::setprecision(3) << this->bandwidth << " GB/sec" << std::endl;
 }
