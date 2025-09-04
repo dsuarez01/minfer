@@ -1,4 +1,4 @@
-CPU support in progress. Currently, this project supports non-sharded Qwen3 GGUF model files.
+CPU support in progress. Currently, this project supports non-sharded Qwen3 GGUF model files — note the tokenizer data must be present and is assumed to be shipped with the "data gym" style byte mapping used by GPT-2 and other BPE tokenizers, where non-printable bytes are mapped to specific Unicode codepoints. Learn more about this at [Llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/README.md).
 
 External dependencies:
 - [UTF8CPP](https://github.com/nemtrif/utfcpp)
@@ -7,9 +7,9 @@ External dependencies:
 
 Current progress so far:
 
+## 9-3-25
 
-
-- Example output with the Qwen3-0.6B-FP32 GGUF model (available [here](https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32)) on M2 Pro chip **(TO-DO: add usage information for generate)**:
+Example output with the Qwen3-0.6B-FP32 GGUF model (available [here](https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32)) on Apple's M2 Pro chip:
 
 ```
 Model: ./gguf/Qwen3-0.6B-FP32.gguf
@@ -44,10 +44,20 @@ So, yeah, the answer should be 4. I don't see any other possibilities here. The 
 Number of tokens generated: 206 toks
 Prefill time: 10.094 sec(s)
 Generation throughput: 2.07 tok/sec
-Mem. Bandwidth: 5.727 GiB/sec
+Mem. Bandwidth: 6.148 GB/sec
 ```
 
 Achieved with a naive FP32 matmul implementation, KV cache, and computation buffers. FP16 + BF16 models currently use a matmul that dequantizes scalar elements. Explicit SIMD versions with these dtypes will be implemented soon.
+
+One of the challenges thus far has been with (1) implementing a BPE tokenizer compatible with the GGUF format from scratch, and (2) finding a model with weight sizes in the decoder blocks that fit comfortably within the L3 cache of my laptop.
+
+Running the larger 1.7B/4B models resulted in cache misses that catastrophically slowed down forward passes, as made evident by the CPU profiler available via [Instruments](https://developer.apple.com/tutorials/instruments):
+
+<img width="1297" height="610" alt="Profiler" src="https://github.com/user-attachments/assets/5db10fc2-922a-4afc-8758-4d6294a5632f" />
+
+This time profile was obtained by running `xctrace` on the `generate` method in the `BaseModel` class on a Qwen3-4b model. The largest MoE tensors take up ~49.8 MiB of memory, which resulted in cache misses/thrashing in the forward pass of the MoE layers.
+
+The solution to this was to simply select a model with decoder block tensors (specifically, MoE tensors) that fit comfortably within the L3 cache on my processor. According to [Notebookcheck](https://www.notebookcheck.net/Apple-M2-Pro-Processor-Benchmarks-and-Specs.682450.0.html), the L3 cache of the M2 Pro processor has a 24 MB capacity. I found that `Qwen3-0.6B-FP32` was the model with the largest parameter count that I was able to run at full precision comfortably (~12.6 MB for the largest MoE tensors), and am therefore making use of it for these test runs.
 
 Speed-of-light computation: **(TO-DO: add me!)**
 
