@@ -73,7 +73,7 @@ The solution to this was to simply select a model with decoder block tensors (sp
   - In total, we read `2400000000 + 294912 = 2400294912 bytes/token`
 - Thus, the ideal upper bound on the throughput we can achieve is: `200e9 bytes/sec / 2400294912 bytes/token = 83.3 tokens/sec`.
 
-Due to the unified memory architecture on Apple silicon, where a single memory controller serves both the CPU and GPU, the calculation of the speed-of-light is _identical_ for the GPU. There are limitations that will prevent us from achieving this sort of throughput: throttling and system/scheduling overhead come to mind. However, it still serves as a useful bound for how efficiently we are serving memory to the computational units.
+Due to the unified memory architecture on Apple silicon, where a single memory controller serves both the CPU and GPU, the calculation of the speed-of-light is _identical_ for the GPU. There are limitations that will prevent us from achieving the ideal: throttling and system/scheduling overhead come to mind. However, it still serves as a useful bound for how efficiently we are serving memory to the computational units.
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [ ] Threading in the FP32 matmul implementation
