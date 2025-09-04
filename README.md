@@ -64,7 +64,7 @@ Running the larger 1.7B/4B models resulted in cache misses that catastrophically
 
 This time profile was obtained by running `xctrace` on the `generate` method in the `BaseModel` class on Unsloth's `Qwen3-4B-Thinking-2507-F16` GGUF model. The largest MoE tensors take up ~49.8 MB of memory, which resulted in cache misses/thrashing in the forward pass of the MoE layers.
 
-The solution to this was to simply select a model with decoder block tensors (specifically, MoE tensors) that fit comfortably within the L3 cache on my processor. According to [Notebookcheck](https://www.notebookcheck.net/Apple-M2-Pro-Processor-Benchmarks-and-Specs.682450.0.html), the L3 cache of the M2 Pro processor has a 24 MB capacity. I found that `Qwen3-0.6B-FP32` was the model with the largest parameter count that I was able to run at full precision comfortably (~12.6 MB for the largest MoE tensors), and am therefore making use of it for these test runs.
+The solution to this was to simply select a model with decoder block tensors (specifically, MoE tensors) that fit comfortably within the L3 cache on my processor. According to [Notebookcheck](https://www.notebookcheck.net/Apple-M2-Pro-Processor-Benchmarks-and-Specs.682450.0.html), the L3 cache of the M2 Pro processor has a 24 MB capacity. I found that `Qwen3-0.6B-FP32` was the model with the largest parameter count that I was able to run at full precision comfortably (~12.6 MB for the largest MoE tensors). I am therefore making use of it for these test runs.
 
 #### Speed-of-light / Ideal Throughput Computation:
 - A theoretical estimate of the maximum throughput in tokens/sec we can achieve, given that model inference is memory bound.
