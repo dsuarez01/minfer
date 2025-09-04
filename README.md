@@ -51,7 +51,7 @@ Mem. Bandwidth: 6.148 GB/sec
 
 Achieved with a naive FP32 matmul implementation, KV cache, and computation buffers. FP16 + BF16 models currently use a matmul that dequantizes scalar elements. Explicit SIMD versions with these dtypes will be implemented soon.
 
-One of the challenges thus far has been with (1) implementing a BPE tokenizer compatible with the GGUF format from scratch, and (2) finding a model with weight sizes in the decoder blocks that fit comfortably within the L3 cache of my laptop.
+Challenges thus far have been with (1) implementing a BPE tokenizer compatible with the GGUF format from scratch, and (2) finding a model with weight sizes in the decoder blocks that fit comfortably within the L3 cache of my laptop.
 
 #### "Data Gym" Byte Mapping Scheme:
 
