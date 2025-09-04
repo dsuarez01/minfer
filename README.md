@@ -68,12 +68,12 @@ The solution to this was to simply select a model with decoder block tensors (sp
 - A theoretical estimate of the maximum throughput in tokens/sec we can achieve, given that model inference is memory bound.
 - We need the memory bandwidth of the processor and the size of the model + KV cache memory per position (token) to determine this:
   - Memory bandwidth of my processor is [200 GB/sec](https://www.notebookcheck.net/Apple-M2-Pro-Processor-Benchmarks-and-Specs.682450.0.html)
-  - Model size is 6e8 params * 4 bytes/param = 2.4e9 bytes/token. (For each token in the forward pass, we have to read 2.4e9 bytes of memory.)
-  - KV cache size per position (token) is 2 * 36 * 8 * 128 * 4 (2 * n_layers * n_kv_heads * d_head * sizeof(float)) = 294912 bytes/token
-  - In total, we read 2400000000 + 294912 = 2400294912 bytes/token
-- Thus, the ideal upper bound on the throughput we can achieve is: 200e9 bytes/sec / 2400294912 bytes/token = 83.3 tokens/sec.
+  - Model size is `6e8 params * 4 bytes/param = 2.4e9 bytes/token`. (For each token in the forward pass, we have to read 2.4e9 bytes of memory.)
+  - KV cache size per position (token) is `2 * 36 * 8 * 128 * 4 (2 * n_layers * n_kv_heads * d_head * sizeof(float)) = 294912 bytes/token`
+  - In total, we read `2400000000 + 294912 = 2400294912 bytes/token`
+- Thus, the ideal upper bound on the throughput we can achieve is: `200e9 bytes/sec / 2400294912 bytes/token = 83.3 tokens/sec`.
 
-Due to the unified memory architecture on Apple silicon, where a single memory controller serves both the CPU and GPU, the calculation of the speed-of-light is identical for the GPU. There are limitations that will prevent us from achieving this sort of throughput: throttling and system/scheduling overhead come to mind. However, it still serves as a useful bound for how efficiently we are serving memory to the computational units.
+Due to the unified memory architecture on Apple silicon, where a single memory controller serves both the CPU and GPU, the calculation of the speed-of-light is _identical_ for the GPU. There are limitations that will prevent us from achieving this sort of throughput: throttling and system/scheduling overhead come to mind. However, it still serves as a useful bound for how efficiently we are serving memory to the computational units.
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [ ] Threading in the FP32 matmul implementation
