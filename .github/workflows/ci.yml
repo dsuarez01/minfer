@@ -10,17 +10,18 @@ jobs:
   test:
     strategy:
       matrix:
-      # slightly cleaner than force install
         include:
           - os: ubuntu-latest
             container: gcc:14
           - os: macos-latest
-            container: null
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
+    container: ${{ matrix.container || null }}
     
     steps:
       - uses: actions/checkout@v5
+      - name: Install CMake (Linux)
+        if: matrix.container == 'gcc:14'
+        run: apt update && apt install -y cmake
       - name: Configure CMake
         run: cmake -B build
       - name: Build
