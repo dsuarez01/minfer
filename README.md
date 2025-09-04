@@ -80,7 +80,7 @@ Due to the unified memory architecture on Apple silicon, where a single memory c
 - [ ] Explicit SIMD for the FP16, BF16 matmuls (with -O3 the compiler might already implement this)
 - [ ] Head-level and expert-level parallelization
 - [ ] Quantizing KV cache
-- [ ] Implementing operations for the GPU (expand this once relevant)
+- [ ] Implementing operations for the GPU (put this in the checklist for the feature/gpu branch once relevant)
 - [ ] Refactor loader, tokenizer, chat template handling
 
 Disclaimer: use the loader with reputable model providers on HuggingFace, e.g. Unsloth). This is meant to be an educational implementation, although you are welcome to fork and try it out for yourself. Note that I am not responsible for the consequences of any misuse.
