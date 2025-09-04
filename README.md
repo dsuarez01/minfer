@@ -14,11 +14,12 @@ Current progress so far:
 Example output with the Qwen3-0.6B-FP32 GGUF model (available [here](https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32)) on Apple's M2 Pro chip:
 
 ```
+d@Mac minfer % ./build/generate ./gguf/Qwen3-0.6B-FP32.gguf -i "When we mix red and blue, what color do we get?" -m 4096 -s 30 -t 
 Model: ./gguf/Qwen3-0.6B-FP32.gguf
-Input: What is 2+2?
+Input: When we mix red and blue, what color do we get?
 Mode: thinking
 Max length: 4096
-Seed: 42
+Seed: 30
 Temperature: 0.6
 Top-p: 0.95
 Top-k: 20
@@ -27,26 +28,28 @@ Presence penalty: 1.5
 
 Formatted message:
 <|im_start|>user
-What is 2+2?<|im_end|>
+When we mix red and blue, what color do we get?<|im_end|>
 <|im_start|>assistant
 
-Number of tokens: 18
-Prefill progress: 18/18
-Prefill time done! Time is: 10.0939 seconds
+Number of tokens: 24
+Prefill progress: 24/24
+Prefill time done! Time is: 12.2935 seconds
 <think>
-Okay, let's see. The user is asking what 2 plus 2 equals. Hmm, I need to figure out the answer here. Well, basic arithmetic problems like this usually have straightforward answers. So adding two 2s together... that should be 4.
+Okay, the user is asking what color we get when mixing red and blue. Let me think about this.
 
-Wait, but maybe there's something more to it? Like if they're thinking of some other mathematical concepts or puzzles? But no, in regular math, 2 + 2 is definitely 4. Let me make sure there's no trick here. Maybe a riddle or a different context? No, I don't think so. This seems too simple for a riddle. It's just a simple addition problem. 
+First, I remember that mixing colors can lead to different hues depending on how they're combined. Red and blue are both primary colors in the traditional subtractive pigment model (like paint). When you mix them, the result should be a secondary color, right? But wait, sometimes people might mix them in a way that's not additive, like using light.
 
-So, yeah, the answer should be 4. I don't see any other possibilities here. The user probably wants the basic calculation right away. They might be testing if I can recognize that 2 plus 2 is four without overcomplicating things.
+Wait, but actually, the answer depends on the method. If you mix two pigments together, the resulting color is called a secondary color. For example, red and blue make violet. But if you add light, it could change. However, the question doesn't specify whether it's additive or subtractive. But since the question is straightforward, maybe they just want the standard answer.
+
+In most cases, mixing red and blue gives violet. But I should check if there's any other possibility. Maybe green? No, because green is derived from mixing yellow and blue. So the correct answer is violet.
 </think>
 
-2 + 2 = 4<|im_end|>
+When mixing red and blue, the resulting color is **violet**. This is based on the traditional subtractive color model where mixing primary colors results in secondary colors.<|im_end|>
 
-Number of tokens generated: 206 toks
-Prefill time: 10.094 sec(s)
-Generation throughput: 2.07 tok/sec
-Mem. Bandwidth: 6.148 GB/sec
+Number of tokens generated: 255 toks
+Prefill time: 12.294 sec(s)
+Generation throughput: 2.08 tok/sec
+Mem. Bandwidth: 6.271 GB/sec
 ```
 
 Achieved with a naive FP32 matmul implementation, KV cache, and computation buffers. FP16 + BF16 models currently use a matmul that dequantizes scalar elements. Explicit SIMD versions with these dtypes will be implemented soon.
