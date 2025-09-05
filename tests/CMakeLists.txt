@@ -22,3 +22,5 @@ add_executable(test_tokenizer
 
 target_include_directories(test_tokenizer PRIVATE include)
 target_link_libraries(test_tokenizer minfer pthread)
+apply_arch_flags(test_ops)
+apply_arch_flags(test_tokenizer)

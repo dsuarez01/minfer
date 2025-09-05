@@ -24,4 +24,4 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(minfer PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-target_compile_options(minfer PRIVATE ${ARCH_FLAGS})
+apply_arch_flags(minfer)
