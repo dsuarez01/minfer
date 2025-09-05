@@ -14,7 +14,7 @@ Current progress so far:
 Example output with the Qwen3-0.6B-FP32 GGUF model (available [here](https://huggingface.co/huggit0000/Qwen3-0.6B-GGUF-FP32)) on Apple's M2 Pro chip:
 
 ```
-d@Mac minfer % ./build/generate ./gguf/Qwen3-0.6B-FP32.gguf -i "When we mix red and blue, what color do we get?" -m 4096 -s 30 -t 
+d@Mac minfer % OMP_NUM_THREADS=1 ./build/apps/generate ./gguf/Qwen3-0.6B-FP32.gguf -i "When we mix red and blue, what color do we get?" -m 4096 -s 30 -t
 Model: ./gguf/Qwen3-0.6B-FP32.gguf
 Input: When we mix red and blue, what color do we get?
 Mode: thinking
@@ -33,7 +33,7 @@ When we mix red and blue, what color do we get?<|im_end|>
 
 Number of tokens: 24
 Prefill progress: 24/24
-Prefill time done! Time is: 12.2935 seconds
+Prefill time done! Time is: 43.3983 seconds
 <think>
 Okay, the user is asking what color we get when mixing red and blue. Let me think about this.
 
@@ -47,9 +47,9 @@ In most cases, mixing red and blue gives violet. But I should check if there's a
 When mixing red and blue, the resulting color is **violet**. This is based on the traditional subtractive color model where mixing primary colors results in secondary colors.<|im_end|>
 
 Number of tokens generated: 255 toks
-Prefill time: 12.294 sec(s)
-Generation throughput: 2.08 tok/sec
-Mem. Bandwidth: 6.271 GB/sec
+Prefill time: 43.398 sec(s)
+Generation throughput: 0.47 tok/sec
+Mem. Bandwidth: 1.439 GB/sec
 ```
 
 Achieved with a naive FP32 matmul implementation, KV cache, and computation buffers. FP16 + BF16 models currently use a matmul that dequantizes scalar elements. Explicit SIMD versions with these dtypes will be implemented soon.
