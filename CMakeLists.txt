@@ -29,7 +29,7 @@ endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     set(ARCH_FLAGS "-march=armv8.6-a+fp16")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-    set(ARCH_FLAGS "-march=native -mf16c")
+    set(ARCH_FLAGS "-march=native;-mf16c")
 endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 ${ARCH_FLAGS}")
@@ -40,7 +40,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/extern/pcre2/CMakeLists.txt")
     message(FATAL_ERROR 
         "PCRE2 submodule not found. Please run:\n"
-        "(if not cloned)             git clone --recurse-submodules <https://github.com/dsuarez01/minfer(/tree/feature/cpu)>\n"
+        "(if not cloned)             git clone --recurse-submodules -b feature/cpu https://github.com/dsuarez01/minfer\n"
         "(if not cloned, cont.)      git submodule update --init --recursive\n"
         "(if already cloned)         git submodule update --init --recursive\n"
     )
