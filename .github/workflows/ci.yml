@@ -15,17 +15,19 @@ jobs:
     
     steps:
       - uses: actions/checkout@v5
-        with:
-          submodules: recursive
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
       
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y cmake
-          sudo apt install -y gcc-14 g++-14
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            brew install libomp
+          else
+            sudo apt update
+            sudo apt install -y cmake gcc-14 g++-14
+            sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+            sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          fi
       
       - name: Configure CMake
         run: cmake -S . -B build

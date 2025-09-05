@@ -6,7 +6,7 @@ endif()
 
 # This logic is specific to enabling OpenMP support via brew on macos systems, and can be removed if needed
 if(APPLE)
-    # Set the paths for find_package to locate libomp
+    # sets the paths for find_package to locate libomp
     set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/libomp" ${CMAKE_PREFIX_PATH})
 endif()
 
@@ -40,9 +40,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/extern/pcre2/CMakeLists.txt")
     message(FATAL_ERROR 
         "PCRE2 submodule not found. Please run:\n"
-        "(if not cloned)             git clone --recurse-submodules <https://github.com/dsuarez01/minfer(/tree/feature/cpu)>"
-        "(if not cloned, cont.)      git submodule update --init --recursive"
-        "(if already cloned)         git submodule update --init --recursive"
+        "(if not cloned)             git clone --recurse-submodules <https://github.com/dsuarez01/minfer(/tree/feature/cpu)>\n"
+        "(if not cloned, cont.)      git submodule update --init --recursive\n"
+        "(if already cloned)         git submodule update --init --recursive\n"
     )
 endif()
 
