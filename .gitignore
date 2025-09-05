@@ -2,8 +2,4 @@
 build
 logs
 gguf
-traces
-
-# these are also build artifacts
-external/pcre2_headers
-external/pcre2.h
+extern
