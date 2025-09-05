@@ -10,21 +10,28 @@ jobs:
   test:
     strategy:
       matrix:
-        include:
-          - os: ubuntu-latest
-            container: gcc:14
-          - os: macos-latest
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || null }}
     
     steps:
       - uses: actions/checkout@v5
-      - name: Install CMake (Linux)
-        if: matrix.container == 'gcc:14'
-        run: apt update && apt install -y cmake
+        with:
+          submodules: recursive
+      
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y cmake
+          sudo apt install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+      
       - name: Configure CMake
         run: cmake -S . -B build
+      
       - name: Build
         run: cmake --build build --parallel
+      
       - name: Run ops tests
-        run: ./build/test_ops_runner
+        run: ./build/tests/test_ops_runner
