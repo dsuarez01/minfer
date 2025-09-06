@@ -62,7 +62,8 @@ struct Config {
     // model params
     size_t vocab_size, model_max_seq_len;
     int d_model, n_layers,
-        n_heads, n_kv_heads, d_head, d_rotary,
+        n_heads, n_kv_heads, d_head, d_k_head, d_v_head, 
+        d_rotary, d_k_rotary,
         d_ff, n_active_experts, n_experts;
     float rms_norm_eps, freq_base;
 
@@ -93,7 +94,7 @@ struct RunState {
 
     std::unique_ptr<float[]> x, xb, xb2;               // activations
     std::unique_ptr<float[]> hb, hb2;                  // ffn
-    std::unique_ptr<float[]> q, k, v, att;             // attention
+    std::unique_ptr<float[]> q, k, v, att_scores, att_out;             // attention
     std::unique_ptr<float[]> k_cache, v_cache;         // k,v caches
     std::unique_ptr<float[]> moe_scores;               // router scores for all experts
     std::unique_ptr<int[]> active_experts;             // indices of topK (active) experts

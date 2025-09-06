@@ -51,7 +51,7 @@ class Qwen3GQA : public GQA {
 public:
     Qwen3GQA(
         int block_idx, int d_model, size_t max_seq_len,
-        int n_heads, int n_kv_heads, int d_head, int d_rotary,
+        int n_heads, int n_kv_heads, int d_head, int d_k_head, int d_v_head, int d_rotary, int d_k_rotary,
         float eps, float freq_base,
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,

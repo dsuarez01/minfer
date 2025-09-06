@@ -81,6 +81,7 @@ void BaseModel::generate(std::string& input_text) {
     while (generated < num_iters) {
 
         uint32_t next_token = sampler->sample(run_state->logits.get());
+        sampler->add_token(next_token); // for presence penalty
         tokens.push_back(next_token);
         std::cout << tokenizer->decode_token(next_token) << std::flush;
         generated++;

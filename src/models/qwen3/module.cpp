@@ -111,7 +111,7 @@ void Qwen3FinalRMSNorm::cpu_forward(float* x_out, float* x_in) {
 
 Qwen3GQA::Qwen3GQA(
     int block_idx, int d_model, size_t max_seq_len, 
-    int n_heads, int n_kv_heads, int d_head, int d_rotary, 
+    int n_heads, int n_kv_heads, int d_head, int d_k_head, int d_v_head, int d_rotary, int d_k_rotary,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -119,7 +119,7 @@ Qwen3GQA::Qwen3GQA(
     DataType qdtype, Device device
 ) : GQA(
         block_idx, d_model, max_seq_len, 
-        n_heads, n_kv_heads, d_head, d_rotary, 
+        n_heads, n_kv_heads, d_head, d_k_head, d_v_head, d_rotary, d_k_rotary,
         eps, freq_base, 
         wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm, 
         qdtype, device
@@ -130,7 +130,7 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3GQA::cpu_forward<float, float_tag>(
                 run_state->x.get(), run_state->xb.get(), 
-                run_state->xb2.get(), run_state->att.get(),
+                run_state->att_out.get(), run_state->att_scores.get(),
                 run_state->q.get(), run_state->k.get(), run_state->v.get(),
                 run_state->k_cache.get(), run_state->v_cache.get(),
                 run_state->cur_pos
@@ -138,7 +138,7 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
 
             case DataType::F16: Qwen3GQA::cpu_forward<fp16_t, fp16_tag>(
                 run_state->x.get(), run_state->xb.get(), 
-                run_state->xb2.get(), run_state->att.get(),
+                run_state->att_out.get(), run_state->att_scores.get(),
                 run_state->q.get(), run_state->k.get(), run_state->v.get(),
                 run_state->k_cache.get(), run_state->v_cache.get(),
                 run_state->cur_pos
@@ -146,7 +146,7 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
 
             case DataType::BF16: Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(
                 run_state->x.get(), run_state->xb.get(), 
-                run_state->xb2.get(), run_state->att.get(),
+                run_state->att_out.get(), run_state->att_scores.get(),
                 run_state->q.get(), run_state->k.get(), run_state->v.get(),
                 run_state->k_cache.get(), run_state->v_cache.get(),
                 run_state->cur_pos
@@ -172,8 +172,8 @@ void Qwen3GQA::cpu_forward(
     cpu::rmsnorm(x_norm, x_in, static_cast<float*>(w_attnnorm->data), d_model, eps);
     
     cpu::matmul<WeightType,Tag>(q_buf, x_norm, static_cast<WeightType*>(wq->data), n_heads * d_head, d_model);
-    cpu::matmul<WeightType,Tag>(k_buf, x_norm, static_cast<WeightType*>(wk->data), n_kv_heads * d_head, d_model);
-    cpu::matmul<WeightType,Tag>(v_buf, x_norm, static_cast<WeightType*>(wv->data), n_kv_heads * d_head, d_model);
+    cpu::matmul<WeightType,Tag>(k_buf, x_norm, static_cast<WeightType*>(wk->data), n_kv_heads * d_k_head, d_model);
+    cpu::matmul<WeightType,Tag>(v_buf, x_norm, static_cast<WeightType*>(wv->data), n_kv_heads * d_v_head, d_model);
 
 
     // have to apply the rmsnorms per head
@@ -182,32 +182,38 @@ void Qwen3GQA::cpu_forward(
     }
     
     for (int h=0; h<n_kv_heads; ++h) {
-        cpu::rmsnorm(k_buf + h*d_head, k_buf + h*d_head, static_cast<float*>(wk_norm->data), d_head, eps);
+        cpu::rmsnorm(k_buf + h*d_k_head, k_buf + h*d_k_head, static_cast<float*>(wk_norm->data), d_k_head, eps);
     }
 
     cpu::neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
-    cpu::neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
+    cpu::neox_rope(k_buf, k_buf, n_kv_heads*d_k_head, d_k_head, d_k_rotary, freq_base, cur_pos);
 
-    // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_head]
-    size_t cache_offset = block_idx * max_seq_len * n_kv_heads * d_head + cur_pos * n_kv_heads * d_head;
-    for (int i=0; i < n_kv_heads * d_head; ++i) {
-        k_cache[cache_offset+i] = k_buf[i];
-        v_cache[cache_offset+i] = v_buf[i];
+    // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_{k,v}_head]
+    size_t cache_offset_k = block_idx * max_seq_len * n_kv_heads * d_k_head + cur_pos * n_kv_heads * d_k_head;
+    for (int i=0; i < n_kv_heads * d_k_head; ++i) {
+        k_cache[cache_offset_k+i] = k_buf[i];
+    }
+
+    size_t cache_offset_v = block_idx * max_seq_len * n_kv_heads * d_v_head + cur_pos * n_kv_heads * d_v_head;
+    for (int i=0; i < n_kv_heads * d_v_head; ++i) {
+        v_cache[cache_offset_v+i] = v_buf[i];
     }
 
     int heads_per_kv = n_heads/n_kv_heads;
     for (int h=0; h<n_heads; ++h) {
         int kv_head = h/heads_per_kv;
-        size_t kv_offset = block_idx*max_seq_len*n_kv_heads*d_head + kv_head*d_head;
+        size_t k_offset = block_idx*max_seq_len*n_kv_heads*d_k_head + kv_head*d_k_head;
+        size_t v_offset = block_idx*max_seq_len*n_kv_heads*d_v_head + kv_head*d_v_head;
         cpu::attn(
             att_scores_buf + h*max_seq_len,
             att_out_buf + h*d_head,
             q_buf + h*d_head,
-            k_cache + kv_offset, // first pos k_head
-            v_cache + kv_offset, // see above
+            k_cache + k_offset, // first pos k_head
+            v_cache + v_offset, // first pos v_head
             cur_pos + 1,
             d_head,
-            n_kv_heads * d_head
+            n_kv_heads * d_k_head,
+            n_kv_heads * d_v_head
         );
     }
 

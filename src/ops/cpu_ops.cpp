@@ -76,14 +76,14 @@ namespace cpu {
     void attn(
         float* att_scores, float* att_out, 
         const float* q_head, const float* kh, const float* vh,
-        int seq_len, int d_head, int kv_dim
+        int seq_len, int d_head, int k_dim, int v_dim
     ) {
         float scale = 1.0f / std::sqrtf((float)d_head);
         
         for (int pos=0; pos<seq_len; ++pos) {
             float score = 0.0f;
             for (int d=0; d<d_head; ++d) {
-                score += q_head[d] * kh[pos*kv_dim+d];
+                score += q_head[d] * kh[pos*k_dim+d];
             }
             att_scores[pos] = score * scale;
         }
@@ -93,7 +93,7 @@ namespace cpu {
         for (int d=0; d<d_head; ++d) {
             float output = 0.0f;
             for (int pos=0; pos < seq_len; ++pos) {
-                output += att_scores[pos] * vh[pos*kv_dim+d];
+                output += att_scores[pos] * vh[pos*v_dim+d];
             }
             att_out[d] = output;
         }

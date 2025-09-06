@@ -60,14 +60,14 @@ RMSNorm::RMSNorm(
 
 GQA::GQA(
     int block_idx, int d_model, size_t max_seq_len,
-    int n_heads, int n_kv_heads, int d_head, int d_rotary, 
+    int n_heads, int n_kv_heads, int d_head, int d_k_head, int d_v_head, int d_rotary, int d_k_rotary,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
     DataType qdtype, Device device
 ) : block_idx(block_idx), d_model(d_model), max_seq_len(max_seq_len), 
-    n_heads(n_heads), n_kv_heads(n_kv_heads), d_head(d_head), d_rotary(d_rotary),
+    n_heads(n_heads), n_kv_heads(n_kv_heads), d_head(d_head), d_k_head(d_k_head), d_v_head(d_v_head), d_rotary(d_rotary), d_k_rotary(d_k_rotary),
     eps(eps), freq_base(freq_base),
     wq(wq), wk(wk), wv(wv), 
     wo(wo), wq_norm(wq_norm), wk_norm(wk_norm),

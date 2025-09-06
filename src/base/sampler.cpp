@@ -24,7 +24,6 @@ Sampler::Sampler(const std::shared_ptr<Config> config) :
     assert(_top_p >= 0.0f && _top_p <= 1.0f && "top_p not in [0.0f,1.0f]");
     assert(_min_p >= 0.0f && _min_p <= 1.0f && "min_p not in [0.0f,1.0f]");
     assert(_penalty_pres >= 0.0f && _penalty_pres <= 2.0f && "penalty_pres not in [0.0f,2.0f]");
-    _seen_token_ids.reserve(config->user_max_seq_len);
 }
 
 void Sampler::add_token(uint32_t token) {
@@ -98,7 +97,6 @@ uint32_t Sampler::sample(const float* logits) {
     for (size_t i=0; i<cutoff; ++i) {
         cumsum += _probs[_indices[i]];
         if (cumsum >= r) {
-            _seen_token_ids.insert(_indices[i]); // for presence penalty
             return _indices[i];
         }
     }

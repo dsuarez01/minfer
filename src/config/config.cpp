@@ -217,18 +217,20 @@ Config::Config(const ModelData& model_data, const RunParams& runtime_params) {
     n_layers = model_data.metadata.at(prefix + "block_count").get<uint64_t>();
     n_heads = model_data.metadata.at(prefix + "attention.head_count").get<uint64_t>();
     n_kv_heads = model_data.metadata.at(prefix + "attention.head_count_kv").get<uint64_t>();
-    
 
-    int d_head_k = model_data.metadata.at(prefix + "attention.key_length").get<uint64_t>();
-    int d_head_v = model_data.metadata.at(prefix + "attention.value_length").get<uint64_t>();
-    assert(d_head_k == d_head_v && "d_head_k != d_head_v");
-    d_head = d_head_k;
+    d_k_head = model_data.metadata.at(prefix + "attention.key_length").get<uint64_t>();
+    d_v_head = model_data.metadata.at(prefix + "attention.value_length").get<uint64_t>();
+    assert(d_k_head == d_v_head && "d_k_head != d_v_head");
+    d_head = d_k_head;
 
     d_ff = model_data.metadata.contains(prefix + "expert_feed_forward_length") 
        ? model_data.metadata[prefix + "expert_feed_forward_length"].get<uint64_t>()
        : model_data.metadata[prefix + "feed_forward_length"].get<uint64_t>(); // required
     rms_norm_eps = model_data.metadata.at(prefix + "attention.layer_norm_rms_epsilon").get<float>();
-    d_rotary = model_data.metadata.value(prefix + "rope.dimension_count", d_head);
+    
+    // will have to refactor this to be a qwen3-specific config at some point
+    d_rotary = d_head;
+    d_k_rotary = d_head;
     freq_base = model_data.metadata.at(prefix + "rope.freq_base").get<float>();
     
     // optional moe, defaults to non-moe values
@@ -276,13 +278,14 @@ RunState::RunState(const std::shared_ptr<Config> config) {
     
     // attn
     q = std::make_unique<float[]>(config->n_heads*config->d_head);
-    k = std::make_unique<float[]>(config->n_kv_heads*config->d_head);
-    v = std::make_unique<float[]>(config->n_kv_heads*config->d_head);
-    att = std::make_unique<float[]>(config->n_heads*config->user_max_seq_len);
+    k = std::make_unique<float[]>(config->n_kv_heads*config->d_k_head);
+    v = std::make_unique<float[]>(config->n_kv_heads*config->d_v_head);
+    att_scores = std::make_unique<float[]>(config->n_heads*config->user_max_seq_len);
+    att_out = std::make_unique<float[]>(config->n_heads * config->d_head);
     
     // kv cache
-    k_cache = std::make_unique<float[]>(config->n_layers *config->n_kv_heads * config->user_max_seq_len * config->d_head);
-    v_cache = std::make_unique<float[]>(config->n_layers * config->n_kv_heads * config->user_max_seq_len * config->d_head);
+    k_cache = std::make_unique<float[]>(config->n_layers *config->n_kv_heads * config->user_max_seq_len * config->d_k_head);
+    v_cache = std::make_unique<float[]>(config->n_layers * config->n_kv_heads * config->user_max_seq_len * config->d_v_head);
     
     // MoE buffers (reduces to dense case when n_experts, n_active_experts = 0)
     moe_scores = std::make_unique<float[]>(std::max(config->n_experts, 1));
@@ -297,15 +300,19 @@ RunState::RunState(const std::shared_ptr<Config> config) {
     buffer_bytes += 3*config->d_model*sizeof(float); // act
     buffer_bytes += 2*config->d_ff*sizeof(float); // FFN
     buffer_bytes += config->n_heads*config->d_head*sizeof(float); // q
-    buffer_bytes += 2*config->n_kv_heads*config->d_head*sizeof(float); // k,v
-    buffer_bytes += config->n_heads*config->user_max_seq_len*sizeof(float); // att
+    buffer_bytes += config->n_kv_heads*config->d_k_head*sizeof(float); // k
+    buffer_bytes += config->n_kv_heads*config->d_v_head*sizeof(float); // v
+    buffer_bytes += config->n_heads*config->user_max_seq_len*sizeof(float); // att_scores
+    buffer_bytes += config->n_heads*config->d_head*sizeof(float); // att_out
     buffer_bytes += std::max(config->n_experts,1)*sizeof(float); // moe_scores
     buffer_bytes += std::max(config->n_active_experts,1)*sizeof(int); // active_experts
     buffer_bytes += 2*std::max(config->n_active_experts,1)*sizeof(float); // active_expert_scores/weights
     buffer_bytes += config->vocab_size*sizeof(float);
 
     // bytes req for kv cache per position
-    kv_bytes_per_pos = 2 * config->n_layers * config->n_kv_heads * config->d_head * sizeof(float);
+    kv_bytes_per_pos = 0;
+    kv_bytes_per_pos += config->n_layers * config->n_kv_heads * config->d_k_head * sizeof(float);
+    kv_bytes_per_pos += config->n_layers * config->n_kv_heads * config->d_v_head * sizeof(float);
 }
 
 void RunState::set_device(Device target_device) {
