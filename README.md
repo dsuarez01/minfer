@@ -91,7 +91,7 @@ With this information in mind, I found that `Qwen3-0.6B-FP32`, with ~12.6 MB for
 Due to the unified memory architecture on Apple silicon, where the CPU and GPU share memory controllers, the calculation of the ideal throughput is identical for the GPU. There are obviously limitations that will prevent us from achieving the ideal, but it still serves as a useful reference point to determine (1) how well we address bottlenecks in the code to (2) effectively utilize the memory bandwidth.
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
-- [ x ] Threading in the naive FP32 matmul implementation
+- [x] Threading in the naive FP32 matmul implementation
 - [ ] Head-level and expert-level parallelization
 - [ ] Explicit SIMD for the FP16, BF16 matmuls
 - [ ] Quantizing KV cache
