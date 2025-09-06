@@ -69,9 +69,9 @@ This time profile was obtained by running `xctrace` on the `generate` executable
 
 The solution to this was to learn more about the various cache levels on my processor, and select a model with weights (specifically, MoE tensors) of a size at most the L3 cache capacity.
 
-Via the same profiling tool as mentioned earlier, I noticed that the OS distributes work out to the cores by scheduling thread(s) across 6 "performance cores":
+Via the same profiling tool as mentioned earlier, I noticed that the OS distributes work out to the cores by scheduling thread(s) across 6 specific cores:
 
-<img width="1035" height="605" alt="scheduling" src="https://github.com/user-attachments/assets/30c1b929-6c63-44eb-9bd7-b4aad0bba629" />
+<img width="1035" height="605" alt="scheduling" src="https://github.com/user-attachments/assets/6cc6d031-99e2-41bb-ba52-ff3acedb016b" />
 
 According to [Wikipedia](https://en.wikipedia.org/wiki/Apple_M2), my device has 6 performance and 4 efficiency cores. The names are essentially what they imply: efficiency cores are set aside for lighter workloads / background tasks, and free up the performance cores to focus on more compute-intensive tasks such as ours.
 
@@ -92,8 +92,8 @@ Due to the unified memory architecture on Apple silicon, where the CPU and GPU s
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [ x ] Threading in the naive FP32 matmul implementation
-- [ ] Explicit SIMD for the FP16, BF16 matmuls
 - [ ] Head-level and expert-level parallelization
+- [ ] Explicit SIMD for the FP16, BF16 matmuls
 - [ ] Quantizing KV cache
 - [ ] Implementing operations for the GPU (put this in the checklist for the feature/gpu branch once relevant)
 - [ ] Refactor loader, tokenizer, improve chat template handling
