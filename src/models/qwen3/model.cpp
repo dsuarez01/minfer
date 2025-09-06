@@ -38,7 +38,7 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
         auto gqa = std::make_shared<Qwen3GQA>(
             i, // block_idx
             config->d_model, config->user_max_seq_len,
-            config->n_heads, config->n_kv_heads, config->d_head, config->d_k_head, config->d_v_head, config->d_rotary, config->d_k_rotary,
+            config->n_heads, config->n_kv_heads, config->d_head, config->d_rotary,
             config->rms_norm_eps, config->freq_base,
             model_data.tensors.at(layer_prefix + "attn_q.weight"),
             model_data.tensors.at(layer_prefix + "attn_k.weight"),

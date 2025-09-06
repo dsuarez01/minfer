@@ -62,8 +62,7 @@ struct Config {
     // model params
     size_t vocab_size, model_max_seq_len;
     int d_model, n_layers,
-        n_heads, n_kv_heads, d_head, d_k_head, d_v_head, 
-        d_rotary, d_k_rotary,
+        n_heads, n_kv_heads, d_head, d_rotary,
         d_ff, n_active_experts, n_experts;
     float rms_norm_eps, freq_base;
 

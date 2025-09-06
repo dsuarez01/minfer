@@ -67,7 +67,7 @@ namespace cpu {
     void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
             int d_rotary, float freq_base, int pos);
     void attn(float* att_scores, float* att_out, const float* q_head, const float* kh, const float* vh,
-            int seq_len, int d_head, int k_dim, int v_dim);
+            int seq_len, int d_head, int kv_dim);
     void route(const float* x_norm, int* active_experts, float* active_experts_scores, 
             float* active_experts_weights, float* moe_scores, const float* w_router,
             int d_model, int n_experts, int n_active_experts);
