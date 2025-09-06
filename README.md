@@ -92,7 +92,7 @@ Due to the unified memory architecture on Apple silicon, where the CPU and GPU s
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [x] Threading in the naive FP32 matmul implementation
-- [ ] Head-level and expert-level parallelization
+- [ ] ~~Head-level~~ and expert-level parallelization
 - [ ] Explicit SIMD for the FP16, BF16 matmuls
 - [ ] Quantizing KV cache
 - [ ] Implementing operations for the GPU (put this in the checklist for the feature/gpu branch once relevant)
