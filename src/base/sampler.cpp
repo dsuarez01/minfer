@@ -42,9 +42,13 @@ uint32_t Sampler::sample(const float* logits) {
     }  
     
     std::iota(_indices.begin(), _indices.end(), 0);  
-    std::sort(_indices.begin(), _indices.end(), [this](size_t a, size_t b) {   
-        return _logits[a] > _logits[b];   
-    });
+    // std::sort(_indices.begin(), _indices.end(), [this](size_t a, size_t b) {   
+    //     return _logits[a] > _logits[b];   
+    // });
+    std::partial_sort(
+        _indices.begin(), _indices.begin()+_top_k, _indices.end(), 
+        [this](size_t a, size_t b) { return _logits[a] > _logits[b]; }
+    );
     
     size_t cutoff = _top_k;
     
