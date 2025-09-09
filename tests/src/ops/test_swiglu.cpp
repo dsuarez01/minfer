@@ -6,134 +6,154 @@
 TestSwiglu::TestSwiglu(const std::string& name) : TestBase(name) {}
 
 void TestSwiglu::test_basic_computation() {
-    int d_model = 2;
-    int d_ff = 3;
+    int d_model = 16;
+    int d_ff = 32;
     
-    float x_in[2] = {1.0f, 2.0f};
-    float w_gate[6] = {
-        1.0f, 0.0f, // gate neuron 0
-        0.0f, 1.0f,  // gate neuron 1  
-        1.0f, 1.0f  // gate neuron 2
-    };
-    float w_up[6] = {
-        2.0f, 0.0f,  // up neuron 0
-        0.0f, 2.0f,   // up neuron 1
-        1.0f, 1.0f   // up neuron 2
-    };
-    float w_down[6] = {
-        1.0f, 0.0f, 0.0f,   // output 0
-        0.0f, 2.0f, 0.0f   // output 1
-    };
+    float x_in[16];
+    for (int i = 0; i < 16; i++) {
+        x_in[i] = (i % 2 == 0) ? 1.0f : 2.0f;
+    }
     
-    float exp_buf[2] = {0.0f};
-    float gate_buf[3] = {0.0f};
-    float up_buf[3] = {0.0f};
+    float w_gate[512];  // 32 × 16
+    float w_up[512];    // 32 × 16  
+    float w_down[512];  // 16 × 32
+    
+    for (int i = 0; i < 32; i++) {
+        for (int j = 0; j < 16; j++) {
+            w_gate[i * 16 + j] = (i < 16 && i == j) ? 1.0f : 0.0f; // simple diagonal pattern for gate
+            // 2x scaling for up
+            w_up[i * 16 + j] = (i < 16 && i == j) ? 2.0f : 0.0f;
+        }
+    }
+    
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 32; j++) {
+            w_down[i * 32 + j] = (i == j % 16) ? 1.0f : 0.0f; // identity-like for down projection
+        }
+    }
+    
+    float exp_buf[16] = {0.0f};
+    float gate_buf[32] = {0.0f};
+    float up_buf[32] = {0.0f};
     
     cpu::swiglu<float, float_tag>(x_in, exp_buf, gate_buf, up_buf, w_gate, w_up, w_down, d_ff, d_model);
     
-    // basic matmul w/ w_up for up buf, silu(gate(x))*up(x) for gate buf
-    // output is down(up(x) * silu(gate(x)))
-    float expected_out[2] = {1.0f*(cpu::silu(1.0f)*2.0f),2.0f*(cpu::silu(2.0f)*4.0f)};
-    float expected_gate[3] = {cpu::silu(1.0f)*2.0f, cpu::silu(2.0f)*4.0f, cpu::silu(3.0f)*3.0f};
-    float expected_up[3] = {2.0f, 4.0f, 3.0f};
+    // expected values for first 16 elements
+    float expected_gate[32] = {0.0f};
+    float expected_up[32] = {0.0f};
+    for (int i = 0; i < 16; i++) {
+        expected_up[i] = x_in[i] * 2.0f; // 2x scaling
+        expected_gate[i] = cpu::silu(x_in[i]) * expected_up[i];
+    }
     
-    assert_arrays_equal(expected_out, exp_buf, d_model, 1e-6f, "Final output: basic");
-    assert_arrays_equal(expected_gate, gate_buf, d_ff, 1e-6f, "Gate buf: basic");
-    assert_arrays_equal(expected_up, up_buf, d_ff, 1e-6f, "Up buf: basic");
+    assert_arrays_equal(expected_up, up_buf, 16, 1e-6f, "Up buf: basic computation");
+    assert_arrays_equal(expected_gate, gate_buf, 16, 1e-6f, "Gate buf: basic computation");
 }
 
 void TestSwiglu::test_zero_input() {
-    int d_model = 2;
-    int d_ff = 2;
+    int d_model = 16;
+    int d_ff = 16;
     
-    float x_in[2] = {0.0f, 0.0f};
+    float x_in[16] = {0.0f};
     
-    float w_gate[4] = {
-        1.0f, 1.0f, 
-        1.0f, 1.0f
-    };
-    float w_up[4] = {
-        1.0f, 1.0f, 
-        1.0f, 1.0f
-    };
-    float w_down[4] = {
-        1.0f, 0.0f, 
-        0.0f, 1.0f
-    };
+    float w_gate[256], w_up[256], w_down[256];
+    for (int i = 0; i < 256; i++) {
+        w_gate[i] = 1.0f;
+        w_up[i] = 1.0f;  
+        w_down[i] = 1.0f;
+    }
     
-    float exp_buf[2] = {0.0f};
-    float gate_buf[2] = {0.0f};
-    float up_buf[2] = {0.0f};
+    float exp_buf[16] = {0.0f};
+    float gate_buf[16] = {0.0f};
+    float up_buf[16] = {0.0f};
     
     cpu::swiglu<float, float_tag>(x_in, exp_buf, gate_buf, up_buf, w_gate, w_up, w_down, d_ff, d_model);
     
-    // zero input => zero output
-    float expected_out[2] = {0.0f, 0.0f};
-    float expected_gate[2] = {0.0f, 0.0f}; // silu(0.0f) * 0.0f
-    float expected_up[2] = {0.0f, 0.0f};
-    assert_arrays_equal(expected_out, exp_buf, d_model, 1e-6f, "Final output: zero input => zero output");
-    assert_arrays_equal(expected_gate, gate_buf, d_ff, 1e-6f, "Gate buf: zero input => zero output");
-    assert_arrays_equal(expected_up, up_buf, d_ff, 1e-6f, "Up buf: zero input => zero output");
+    float expected_out[16] = {0.0f};
+    float expected_gate[16] = {0.0f};
+    float expected_up[16] = {0.0f};
+    
+    assert_arrays_equal(expected_out, exp_buf, d_model, 1e-6f, "Zero input => zero output");
+    assert_arrays_equal(expected_gate, gate_buf, d_ff, 1e-6f, "Zero gate buffer");
+    assert_arrays_equal(expected_up, up_buf, d_ff, 1e-6f, "Zero up buffer");
 }
 
 void TestSwiglu::test_identity_weights() {
-    int d_model = 2;
-    int d_ff = 2;
+    int d_model = 16;
+    int d_ff = 16;
     
-    float x_in[2] = {1.0f, 2.0f};
+    float x_in[16];
+    for (int i = 0; i < 16; i++) {
+        x_in[i] = i + 1.0f; // 1, 2, 3, ..., 16
+    }
     
-    // identity
-    float w_gate[4] = {
-        1.0f, 0.0f, 
-        0.0f, 1.0f
-    };
-    float w_up[4] = {
-        1.0f, 0.0f, 
-        0.0f, 1.0f
-    };
-    float w_down[4] = {
-        1.0f, 0.0f, 
-        0.0f, 1.0f
-    };
+    // identity matrices
+    float w_gate[256] = {0.0f};
+    float w_up[256] = {0.0f};
+    float w_down[256] = {0.0f};
     
-    float exp_buf[2] = {0.0f};
-    float gate_buf[2] = {0.0f};
-    float up_buf[2] = {0.0f};
+    for (int i = 0; i < 16; i++) {
+        w_gate[i * 16 + i] = 1.0f;
+        w_up[i * 16 + i] = 1.0f;
+        w_down[i * 16 + i] = 1.0f;
+    }
+    
+    float exp_buf[16] = {0.0f};
+    float gate_buf[16] = {0.0f};
+    float up_buf[16] = {0.0f};
     
     cpu::swiglu<float, float_tag>(x_in, exp_buf, gate_buf, up_buf, w_gate, w_up, w_down, d_ff, d_model);
     
-    // Up=input=[1, 2]
-    // After SiLU and multiplication: [silu(1)*1, silu(2)*2] 
-    float expected_out[2] = {1.0f* (cpu::silu(1.0f) * 1.0f), 1.0f*(cpu::silu(2.0f) * 2.0f)};
-    float expected_gate[2] = {cpu::silu(1.0f) * 1.0f, cpu::silu(2.0f) * 2.0f};
-    float expected_up[2] = {1.0f, 2.0f};
-
+    float expected_up[16];
+    float expected_gate[16];
+    float expected_out[16];
+    
+    for (int i = 0; i < 16; i++) {
+        expected_up[i] = x_in[i];  // identity transformation
+        expected_gate[i] = cpu::silu(x_in[i]) * x_in[i];
+        expected_out[i] = expected_gate[i];  // identity down proj.
+    }
+    
     assert_arrays_equal(expected_out, exp_buf, d_model, 1e-6f, "Final output: identity weights");
     assert_arrays_equal(expected_gate, gate_buf, d_ff, 1e-6f, "Gate buf: identity weights");
     assert_arrays_equal(expected_up, up_buf, d_ff, 1e-6f, "Up buf: identity weights");
 }
 
 void TestSwiglu::test_scalar() {
-    int d_model = 1;
-    int d_ff = 1;
+    // test with d_model=16, d_ff=16 but use only first element
+    int d_model = 16;
+    int d_ff = 16;
     
-    float x_in[1] = {1.0f};
-    float w_gate[1] = {2.0f};  // gate=2*1=2
-    float w_up[1] = {3.0f};    // up=3*1=3
-    float w_down[1] = {4.0f};
+    float x_in[16] = {1.0f, 0.0f}; // only first element non-zero
     
-    float exp_buf[1] = {0.0f};
-    float gate_buf[1] = {0.0f};
-    float up_buf[1] = {0.0f};
+    float w_gate[256] = {0.0f};
+    float w_up[256] = {0.0f};
+    float w_down[256] = {0.0f};
+    
+    // only first row/column active
+    w_gate[0] = 2.0f;  // gate[0] = 2*1 = 2
+    w_up[0] = 3.0f;    // up[0] = 3*1 = 3
+    w_down[0] = 4.0f;  // down[0] = 4*gate[0] = 4*silu(2)*3
+    
+    float exp_buf[16] = {0.0f};
+    float gate_buf[16] = {0.0f};
+    float up_buf[16] = {0.0f};
     
     cpu::swiglu<float, float_tag>(x_in, exp_buf, gate_buf, up_buf, w_gate, w_up, w_down, d_ff, d_model);
     
     float expected_out = 4.0f * (cpu::silu(2.0f) * 3.0f);
     float expected_gate = cpu::silu(2.0f) * 3.0f;
     float expected_up = 3.0f;
-    assert_equal(expected_out, exp_buf[0], 1e-6f, "Final output: scalar");
-    assert_equal(expected_gate, gate_buf[0], 1e-6f, "Gate buf: scalar");
-    assert_equal(expected_up, up_buf[0], 1e-6f, "Up buf: scalar");
+    
+    assert_equal(expected_out, exp_buf[0], 1e-6f, "Final output: scalar-like");
+    assert_equal(expected_gate, gate_buf[0], 1e-6f, "Gate buf: scalar-like");
+    assert_equal(expected_up, up_buf[0], 1e-6f, "Up buf: scalar-like");
+    
+    for (int i = 1; i < 16; i++) { // other elements should be zero
+        assert_equal(0.0f, exp_buf[i], 1e-6f, "Other outputs zero");
+        assert_equal(0.0f, gate_buf[i], 1e-6f, "Other gate elements zero");
+        assert_equal(0.0f, up_buf[i], 1e-6f, "Other up elements zero");
+    }
 }
 
 void TestSwiglu::run_all_tests() {

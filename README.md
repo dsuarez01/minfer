@@ -92,7 +92,8 @@ Due to the unified memory architecture on Apple silicon, where the CPU and GPU s
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [x] Threading in the naive FP32 matmul implementation
-- [ ] ~~Head-level~~ and expert-level parallelization
+- [x] Head-level parallelization
+- [x] Manual FP32 SIMD implementation
 - [ ] Explicit SIMD for the FP16, BF16 matmuls
 - [ ] Quantizing KV cache
 - [ ] Implementing operations for the GPU (put this in the checklist for the feature/gpu branch once relevant)
@@ -148,3 +149,98 @@ Prefill time: 3.208 sec(s)
 Generation throughput: 10.06 tok/sec
 Mem. Bandwidth: 29.588 GB/sec
 ```
+
+Utilizing head-level parallellization in the GQA computation yields a noticeable improvement in bandwidth utilization:
+
+```
+davidsuarez@Mac minfer % OMP_NUM_THREADS=16 ./build/apps/generate ./gguf/Qwen3-0.6B-FP32.gguf -i "When we mix red and blue, what color do we get?" -m 4096 -s 30 -t
+Model: ./gguf/Qwen3-0.6B-FP32.gguf
+Input: When we mix red and blue, what color do we get?
+Mode: thinking
+Max length: 4096
+Seed: 30
+Temperature: 0.6
+Top-p: 0.95
+Top-k: 20
+Min-p: 0
+Presence penalty: 1.5
+
+Formatted message:
+<|im_start|>user
+When we mix red and blue, what color do we get?<|im_end|>
+<|im_start|>assistant
+
+Number of tokens: 24
+Prefill progress: 24/24
+Prefill time done! Time is: 1.55545 seconds
+<think>
+Okay, the user is asking what color we get when mixing red and blue. Let me think about this.
+
+First, I remember that mixing colors can lead to different hues depending on how they're combined. Red and blue are both primary colors in the traditional subtractive pigment model (like paint). When you mix them, the result should be a secondary color, right? But wait, sometimes people might mix them in a way that's not additive, like using light.
+
+Wait, but actually, the answer depends on the method. If you mix two pigments together, the resulting color is called a secondary color. For example, red and blue make violet. But if you add light, it could change. However, the question doesn't specify whether it's additive or subtractive. But since the question is straightforward, maybe they just want the standard answer.
+
+In most cases, mixing red and blue gives violet. But I should check if there's any other possibility. Maybe green? No, because green is derived from mixing yellow and blue. So the correct answer is violet.
+</think>
+
+When mixing red and blue, the resulting color is **violet**. This is based on the traditional subtractive color model where mixing primary colors results in secondary colors.<|im_end|>
+
+Number of tokens generated: 255 toks
+Prefill time: 1.555 sec(s)
+Generation throughput: 10.93 tok/sec
+Mem. Bandwidth: 33.957 GB/sec
+```
+
+Attempting to parallelize at the expert level led me to realize that there would be issues with nested parallelization (each thread calling the multithreaded matmul in swiglu). Expert parallelization usually involves distributed parallelism, which doesn't apply in our single-processor case.
+
+#### Manual FP32 SIMD
+
+A look at the disassembly of the -O3 compiler's auto-vectorization via `objdump` reveals several inefficiencies:
+
+Essentially, the compiler's SIMD factors in instruction-level parallelism, but completely ignores cache-level optimization. It processes output 16 float32 elements at a time (using 128-bit registers), as evidenced by the disassembly here:
+
+```
+100085b98: ad7f0821    	ldp	q1, q2, [x1, #-0x20]
+100085b9c: acc21023    	ldp	q3, q4, [x1], #0x40
+100085ba0: ad7f1845    	ldp	q5, q6, [x2, #-0x20]
+100085ba4: acc24047    	ldp	q7, q16, [x2], #0x40
+100085ba8: 6e25dc21    	fmul.4s	v1, v1, v5
+100085bac: 5e1c0425    	mov	s5, v1[3]
+100085bb0: 5e140431    	mov	s17, v1[2]
+100085bb4: 5e0c0432    	mov	s18, v1[1]
+100085bb8: 6e26dc42    	fmul.4s	v2, v2, v6
+100085bbc: 5e1c0446    	mov	s6, v2[3]
+100085bc0: 5e140453    	mov	s19, v2[2]
+100085bc4: 5e0c0454    	mov	s20, v2[1]
+100085bc8: 6e27dc63    	fmul.4s	v3, v3, v7
+100085bcc: 5e1c0467    	mov	s7, v3[3]
+100085bd0: 5e140475    	mov	s21, v3[2]
+100085bd4: 5e0c0476    	mov	s22, v3[1]
+100085bd8: 6e30dc84    	fmul.4s	v4, v4, v16
+100085bdc: 5e1c0490    	mov	s16, v4[3]
+100085be0: 5e140497    	mov	s23, v4[2]
+100085be4: 5e0c0498    	mov	s24, v4[1]
+```
+
+Moreover, it performs the accumulation step separately:
+
+```
+100085be8: 1e212800    	fadd	s0, s0, s1
+100085bec: 1e322800    	fadd	s0, s0, s18
+100085bf0: 1e312800    	fadd	s0, s0, s17
+100085bf4: 1e252800    	fadd	s0, s0, s5
+100085bf8: 1e222800    	fadd	s0, s0, s2
+100085bfc: 1e342800    	fadd	s0, s0, s20
+100085c00: 1e332800    	fadd	s0, s0, s19
+100085c04: 1e262800    	fadd	s0, s0, s6
+100085c08: 1e232800    	fadd	s0, s0, s3
+100085c0c: 1e362800    	fadd	s0, s0, s22
+100085c10: 1e352800    	fadd	s0, s0, s21
+100085c14: 1e272800    	fadd	s0, s0, s7
+100085c18: 1e242800    	fadd	s0, s0, s4
+100085c1c: 1e382800    	fadd	s0, s0, s24
+100085c20: 1e372800    	fadd	s0, s0, s23
+100085c24: 1e302800    	fadd	s0, s0, s16
+```
+
+So the compiler -O3 auto-vectorization massively underutilizes the cache

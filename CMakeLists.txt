@@ -28,7 +28,7 @@ endif()
 
 function(apply_arch_flags target_name)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-        target_compile_options(${target_name} PRIVATE -march=armv8.6-a+fp16)
+        target_compile_options(${target_name} PRIVATE -march=armv8.6-a+fp16 -mtune=apple-m2)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
         target_compile_options(${target_name} PRIVATE -march=native -mf16c)
     endif()
