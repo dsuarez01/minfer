@@ -193,7 +193,7 @@ Mem. Bandwidth: 33.957 GB/sec
 
 Attempting to parallelize at the expert level led me to realize that there would be issues with nested parallelization (each thread calling the multithreaded matmul in swiglu). Expert parallelization usually involves distributed parallelism, which doesn't apply in our single-processor case.
 
-#### Manual FP32 SIMD
+#### Manual FP32 SIMD [in-progress]
 
 A look at the disassembly of the -O3 compiler's auto-vectorization via `objdump` reveals several inefficiencies:
 
