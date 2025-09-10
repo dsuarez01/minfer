@@ -36,18 +36,27 @@ uint32_t Sampler::sample(const float* logits) {
         return std::max_element(logits, logits+_vocab_size)-logits;  
     }  
   
+    // NOTE: disabled presence penalty calculation for now
     // apply presence penalty, then sort logits and get top-k
     for (size_t i=0; i<_vocab_size; ++i) {
         _logits[i] = logits[i] - float(_seen_token_ids.count(i)) * _penalty_pres;
     }  
     
     std::iota(_indices.begin(), _indices.end(), 0);  
-    // std::sort(_indices.begin(), _indices.end(), [this](size_t a, size_t b) {   
-    //     return _logits[a] > _logits[b];   
-    // });
-    std::partial_sort(
-        _indices.begin(), _indices.begin()+_top_k, _indices.end(), 
-        [this](size_t a, size_t b) { return _logits[a] > _logits[b]; }
+    
+    // top-k unsorted
+    std::nth_element(
+        _indices.begin(), 
+        _indices.begin() + _top_k, 
+        _indices.end(),
+        [&](size_t a, size_t b) { return _logits[a] > _logits[b]; }
+    );
+
+    // sort top-20
+    std::sort(
+        _indices.begin(), 
+        _indices.begin() + _top_k,
+        [&](size_t a, size_t b) { return _logits[a] > _logits[b]; }
     );
     
     size_t cutoff = _top_k;

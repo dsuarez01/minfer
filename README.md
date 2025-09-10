@@ -7,7 +7,7 @@ External dependencies:
 - [PCRE2](https://github.com/PCRE2Project/pcre2)
 - [Minja](https://github.com/google/minja)
 
-Current progress so far:
+Current progress so far: [in the process of revising!]
 
 ## 9-3-25
 

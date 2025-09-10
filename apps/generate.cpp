@@ -9,6 +9,7 @@
 
 void print_usage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <model_path> -i <input> -m <max_len> -s <seed> <mode> -n <num_iters>\n";
+    std::cout << "  -h, --help             Show this help\n";
     std::cout << "Required:\n";
     std::cout << "  -i, --input <text>     Input text to process\n";
     std::cout << "  -m, --max-len <int>    Maximum sequence length\n";
@@ -18,8 +19,6 @@ void print_usage(const char* program_name) {
     std::cout << "  --instruct             Use instruct mode preset\n";
     std::cout << "Optional:\n";
     std::cout << "  -n, --num-iters <int>  Upper bound on generated seq len (-m arg by default)\n ";
-    std::cout << "===========";
-    std::cout << "  -h, --help             Show this help\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -141,7 +140,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Model: " << filepath << "\n";
     std::cout << "Input: " << input_text << "\n";
     std::cout << "Mode: " << (thinking_mode_set ? "thinking" : "instruct") << "\n";
-    std::cout << "Max length: " << max_seq_len.value() << "\n";
+    std::cout << "Max seq. length: " << max_seq_len.value() << "\n";
     std::cout << "Seed: " << seed.value() << "\n";
     std::cout << "Temperature: " << temperature << "\n";
     std::cout << "Top-p: " << top_p << "\n";

@@ -152,19 +152,17 @@ namespace cpu {
 
         // process in 16x16 tiling
         // (allows for optimal access pattern assuming 64-bit cache lines)
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic,4) // each thread is assigned 4 chunks
         for (int i=0; i<d_out; i+=16) {
             int block_rows = std::min(16, d_out-i);
             for (int i_block=0; i_block<block_rows; ++i_block) {
                 
-                float32x4_t total_acc = vdupq_n_f32(0.0f);
+                float32x4_t acc0 = vdupq_n_f32(0.0f);
+                float32x4_t acc1 = vdupq_n_f32(0.0f);
+                float32x4_t acc2 = vdupq_n_f32(0.0f);
+                float32x4_t acc3 = vdupq_n_f32(0.0f);
                 
                 for (int j=0; j<d_in; j+=16) {
-                    
-                    float32x4_t acc0 = vdupq_n_f32(0.0f);
-                    float32x4_t acc1 = vdupq_n_f32(0.0f);
-                    float32x4_t acc2 = vdupq_n_f32(0.0f);
-                    float32x4_t acc3 = vdupq_n_f32(0.0f);
                     
                     int base_offset = (i+i_block)*d_in + j;
                     
@@ -173,11 +171,10 @@ namespace cpu {
                     acc2 = vfmaq_f32(acc2, vld1q_f32(x_in+j+8),  vld1q_f32(weight+base_offset+8));
                     acc3 = vfmaq_f32(acc3, vld1q_f32(x_in+j+12), vld1q_f32(weight+base_offset+12));
                     
-                    float32x4_t combined = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
-                    total_acc = vaddq_f32(total_acc, combined);
                 }
-                
-                x_out[i+i_block] = vaddvq_f32(total_acc);
+
+                float32x4_t combined = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
+                x_out[i+i_block] = vaddvq_f32(combined);
             }
         }
     }

@@ -294,22 +294,8 @@ RunState::RunState(const std::shared_ptr<Config> config) {
 
     logits = std::make_unique<float[]>(config->vocab_size);
 
-    // bytes req for bufs
-    buffer_bytes = 0;
-    buffer_bytes += 3*config->d_model*sizeof(float); // act
-    buffer_bytes += 2*config->d_ff*sizeof(float); // FFN
-    buffer_bytes += config->n_heads*config->d_head*sizeof(float); // q
-    buffer_bytes += 2*config->n_kv_heads*config->d_head*sizeof(float); // k, v
-    buffer_bytes += config->n_heads*config->user_max_seq_len*sizeof(float); // att_scores
-    buffer_bytes += config->n_heads*config->d_head*sizeof(float); // att_out
-    buffer_bytes += std::max(config->n_experts,1)*sizeof(float); // moe_scores
-    buffer_bytes += std::max(config->n_active_experts,1)*sizeof(int); // active_experts
-    buffer_bytes += 2*std::max(config->n_active_experts,1)*sizeof(float); // active_expert_scores/weights
-    buffer_bytes += config->vocab_size*sizeof(float);
-
     // bytes req for kv cache per position
-    kv_bytes_per_pos = 0;
-    kv_bytes_per_pos += 2 * config->n_layers * config->n_kv_heads * config->d_head * sizeof(float);
+    kv_bytes_per_pos = 2 * config->n_layers * config->n_kv_heads * config->d_head * sizeof(float);
 }
 
 void RunState::set_device(Device target_device) {
@@ -332,7 +318,8 @@ float GenStats::get_elapsed_sec() const {
 
 void GenStats::print_stats() const {
     std::cout << "Number of tokens generated: " << this->num_tokens_gen << " toks\n"
-              << "Prefill time: " << std::fixed << std::setprecision(3) << this->prefill_time << " sec(s)\n" 
+              << "Prefill time: " << std::fixed << std::setprecision(3) << this->prefill_time << " sec(s)\n"
+              << "Time to first token: " << std::fixed << std::setprecision(3) << this->ttft << " sec(s)\n"
               << "Generation throughput: " << std::setprecision(2) << this->throughput << " tok/sec\n"
               << "Mem. Bandwidth: " << std::setprecision(3) << this->bandwidth << " GB/sec" << std::endl;
 }

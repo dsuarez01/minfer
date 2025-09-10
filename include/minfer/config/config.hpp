@@ -77,19 +77,15 @@ struct Config {
     size_t user_max_seq_len, top_k, num_iters;
     int seed;
     float temperature, top_p, min_p, penalty_pres;
-    
+
     Config(const ModelData& model_data, const RunParams& runtime_params);
 };
 
 struct RunState {
-    std::shared_ptr<Config> run_config;                // access to parameters for buffer init
     Device device;
     int cur_pos;                                       // cur pos in seq
     uint32_t token_id;                                 // token ID at current pos. in seq.
-    std::vector<uint32_t> tokens;                      // tokens
     bool compute_logits;                               // prefill optimization
-    size_t buffer_bytes;                               // mem required for buffers, in bytes
-    size_t kv_bytes_per_pos;                           // mem required for kv cache per position
 
     std::unique_ptr<float[]> x, xb, xb2;               // activations
     std::unique_ptr<float[]> hb, hb2;                  // ffn
@@ -101,6 +97,9 @@ struct RunState {
     std::unique_ptr<float[]> active_experts_weights;   // weights for topK (active) experts
     std::unique_ptr<float[]> logits;                   // output logits at end
     
+    // kv cache bytes per position
+    size_t kv_bytes_per_pos;
+
     explicit RunState(const std::shared_ptr<Config> config);
     void set_device(Device target_device);
 };

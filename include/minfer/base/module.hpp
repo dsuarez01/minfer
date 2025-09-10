@@ -12,19 +12,20 @@ public:
     
     void set_device(Device target_device);
     void set_qdtype(DataType qdtype) { this->_qdtype = qdtype; };
-    
+    void set_read_bytes(size_t bytes) { _read_bytes = bytes; };
+
     Device get_device() const { return this->_device; };
     DataType get_qdtype() const { return this->_qdtype; };
-    size_t get_size_bytes() const { return this->_size_bytes; };
+    size_t get_read_bytes() const { return this->_read_bytes; }; // defined as num bytes read from weights per forward pass
 
 protected:
     void append_parameter(TPtr tensor);
 
 private:
     std::vector<TPtr> _parameters;
-    DataType _qdtype;  // Quantized weight dtype (F32, F16, etc)
+    DataType _qdtype;  // quantized weight dtype (F32, F16, etc)
     Device _device;
-    size_t _size_bytes = 0; // internally managed by append_parameter
+    size_t _read_bytes = 0; // set in init. of derived classes
 };
 
 // Base classes with unified forward methods

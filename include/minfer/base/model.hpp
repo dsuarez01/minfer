@@ -12,9 +12,10 @@ public:
     virtual ~BaseModel() = default;
     
     void generate(std::string& input_text);
+    void benchmark();
     void set_device(Device target_device);
     Device get_device() const;
-    size_t get_size_bytes() const;
+    size_t get_read_bytes() const; // represents bytes read from weights per forward pass
 
 protected:
     std::shared_ptr<Config> config;
@@ -28,6 +29,6 @@ protected:
 
 private:
     Device _device = Device::CPU;
-    size_t _size_bytes = 0;
+    size_t _read_bytes = 0; // represents bytes read from weights per forward pass
     std::vector<std::shared_ptr<BaseLayer>> _layers;
 };

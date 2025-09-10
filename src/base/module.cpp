@@ -4,7 +4,6 @@
 
 void BaseLayer::append_parameter(TPtr tensor) {
     _parameters.push_back(tensor);
-    _size_bytes += tensor->size_bytes;
 }
 
 void BaseLayer::set_device(Device target_device) {

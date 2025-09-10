@@ -11,7 +11,7 @@ BaseModel::BaseModel(const ModelData& model_data, const RunParams& run_params) {
 }
 
 void BaseModel::append_layer(std::shared_ptr<BaseLayer> layer) {
-    _size_bytes += layer->get_size_bytes();
+    _read_bytes += layer->get_read_bytes();
     _layers.push_back(layer);
 }
 
@@ -28,10 +28,11 @@ Device BaseModel::get_device() const {
     return this->_device;
 }
 
-size_t BaseModel::get_size_bytes() const {
-    return this->_size_bytes;
+size_t BaseModel::get_read_bytes() const {
+    return this->_read_bytes;
 }
 
+// TO-DO: multi-turn conversation?
 void BaseModel::generate(std::string& input_text) {
     
     // create message for single user input
@@ -44,13 +45,13 @@ void BaseModel::generate(std::string& input_text) {
     std::vector<uint32_t> tokens = tokenizer->encode(formatted);
     std::cout << "Number of tokens: " << tokens.size() << std::endl;
     
-    // TO-DO: remove once ring buffer implemented
+    // TO-DO: remove once/if ring buffer implemented
     assert(tokens.size() <= config->user_max_seq_len && "# of encoded tokens should be at most passed in max seq len");
 
     stats->start_timer(); // PREFILL START
     
     size_t total_passes = 0;
-    size_t total_kv_bytes = 0;
+    size_t kv_cache_bytes_read = 0;
     
     // PREFILL
     for (size_t i = 0; i < tokens.size(); ++i) {
@@ -61,18 +62,18 @@ void BaseModel::generate(std::string& input_text) {
         forward(run_state);
         
         total_passes++;
-        total_kv_bytes += run_state->kv_bytes_per_pos * (i+1); // KV cache size at position i
+        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos+1); // read from pos [0, 1, ..., i]
     }
 
+    std::cout << std::endl;
     float prefill_time = stats->get_elapsed_sec(); // PREFILL END
     stats->prefill_time = prefill_time;
-    std::cout << "\nPrefill time done! Time is: " << prefill_time << " seconds\n" << std::flush;
 
     for (uint32_t token : tokens) {
         sampler->add_token(token); // for presence penalty
     }
-    run_state->tokens = tokens;
-    size_t num_iters = std::min(config->num_iters, config->user_max_seq_len-tokens.size());
+
+    size_t num_iters = std::min(config->num_iters, config->user_max_seq_len - tokens.size());
 
     stats->start_timer(); // GENERATE START
     size_t generated = 0;
@@ -100,17 +101,72 @@ void BaseModel::generate(std::string& input_text) {
         forward(run_state);
 
         total_passes++;
-        total_kv_bytes += run_state->kv_bytes_per_pos * tokens.size(); // KV cache size
+        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos + 1); // read from pos [0, 1, ..., i]
     }
-    std::cout << "\n" << std::endl;
+
+    std::cout << std::endl;
 
     float throughput_time = stats->get_elapsed_sec(); // GENERATE END
     stats->num_tokens_gen = generated;
     stats->throughput = generated/throughput_time;
 
     // total mem reads
-    size_t total_bytes = (total_passes*(this->get_size_bytes() + run_state->buffer_bytes)) + total_kv_bytes;
+    size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
     
-    stats->bandwidth = total_bytes / 1e9 /(throughput_time + prefill_time); // mem bandwidth in GB/sec
+    stats->bandwidth = total_bytes / 1e9 / (throughput_time + prefill_time); // mem bandwidth in GB/sec
+    stats->print_stats();
+}
+
+void BaseModel::benchmark() {
+    std::mt19937 gen(config->seed);
+    
+    // 512 randomly generated token ids for prefill
+    std::uniform_int_distribution<> distrib(0, config->vocab_size-1);
+
+    stats->start_timer(); // PREFILL START
+
+    size_t total_passes = 0;
+    size_t kv_cache_bytes_read = 0;
+
+    for(size_t i = 0; i<10; ++i) {
+        run_state->cur_pos = i;
+        run_state->token_id = distrib(gen);
+        run_state->compute_logits = (i == 10-1);
+        forward(run_state);
+        total_passes++;
+        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos +1);
+    }
+
+    float prefill_time = stats->get_elapsed_sec(); // PREFILL END
+    stats->prefill_time = prefill_time;
+
+    size_t generated = 0;
+    stats->start_timer(); // GENERATE START
+
+    while (generated<128) {
+        uint32_t next_token = distrib(gen);
+        generated++;
+
+        if (generated == 1) {
+            stats->ttft = prefill_time + stats->get_elapsed_sec(); // time-to-first-token
+        }
+
+        run_state->cur_pos = 10+generated-1;
+        run_state->token_id = next_token;
+        run_state->compute_logits = true;
+        forward(run_state);
+
+        total_passes++;
+        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos + 1); // read from pos [0, 1, ..., i]
+    }
+
+    float throughput_time = stats->get_elapsed_sec(); // GENERATE END
+    stats->num_tokens_gen = generated;
+    stats->throughput = generated/throughput_time;
+
+    // total mem reads
+    size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
+    
+    stats->bandwidth = total_bytes / 1e9 / (throughput_time + prefill_time); // mem bandwidth in GB/sec
     stats->print_stats();
 }

@@ -25,7 +25,10 @@ Qwen3Embed::Qwen3Embed(
     size_t vocab_size, int d_model, 
     TPtr weight, 
     DataType qdtype, Device device
-) : Embed(vocab_size, d_model, weight, qdtype, device) {}
+) : Embed(vocab_size, d_model, weight, qdtype, device) {
+
+    set_read_bytes(weight->size_bytes / vocab_size); // only read a row of embed per forward pass
+}
 
 void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
     // Device dispatch (GPU case not implemented yet)
@@ -55,7 +58,9 @@ Qwen3LMHead::Qwen3LMHead(
     int d_in, int d_out,
     TPtr weight, TPtr bias, 
     DataType qdtype, Device device
-) : Linear(d_in, d_out, weight, bias, qdtype, device) {}
+) : Linear(d_in, d_out, weight, bias, qdtype, device) {
+    set_read_bytes(weight->size_bytes + (bias ? bias->size_bytes : 0));
+}
 
 void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
     if (run_state->compute_logits) {
@@ -88,7 +93,10 @@ Qwen3FinalRMSNorm::Qwen3FinalRMSNorm(
     int dim, float eps, 
     TPtr weight,
     DataType qdtype, Device device
-) : RMSNorm(dim, eps, weight, qdtype, device) {}
+) : RMSNorm(dim, eps, weight, qdtype, device) {
+
+    set_read_bytes(weight->size_bytes);
+}
 
 void Qwen3FinalRMSNorm::forward(std::shared_ptr<RunState> run_state) {
     // Device dispatch (GPU case not implemented yet)
@@ -123,7 +131,12 @@ Qwen3GQA::Qwen3GQA(
         eps, freq_base, 
         wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm, 
         qdtype, device
-    ) {}
+    ) {
+        set_read_bytes(
+            wq->size_bytes + wk->size_bytes + wv->size_bytes + wo->size_bytes 
+          + wq_norm->size_bytes + wk_norm->size_bytes + w_attnnorm->size_bytes
+        );
+    }
 
 void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == Device::CPU) {
@@ -231,7 +244,14 @@ Qwen3MoE::Qwen3MoE(
         w_moenorm, w_router,
         ws_gate, ws_down, ws_up,
         qdtype, device
-    ) {}
+    ) {
+        set_read_bytes(
+          w_moenorm->size_bytes + (w_router ? w_router->size_bytes : 0)
+        + (ws_gate->size_bytes / n_experts) * n_active_experts
+        + (ws_down->size_bytes / n_experts) * n_active_experts
+        + (ws_up->size_bytes / n_experts) * n_active_experts
+        );
+    }
 
 void Qwen3MoE::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == Device::CPU) {
