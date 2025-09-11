@@ -162,26 +162,6 @@ void Qwen3Tokenizer::compile_regex_pattern() {
     // tiktoken (cl100k_base): https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
     std::string base_pattern = R"('(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+|\s++$|\s*[\r\n]|\s+(?!\S)|\s)";
     
-    // special tokens should not be split
-    if (!_special_tokens.empty()) {
-        std::string special_pattern;
-        for (const auto& token : _special_tokens) {
-            // have to escape characters w/ special meaning in regex
-            std::string escaped;
-            for (char c : token) {
-                if (c == '\\' || c == '^' || c == '$' || c == '.' || c == '[' || c == ']' || 
-                    c == '|' || c == '(' || c == ')' || c == '?' || c == '*' || c == '+' || 
-                    c == '{' || c == '}' || c == '<' || c == '>') {
-                    escaped += '\\';
-                }
-                escaped += c;
-            }
-            special_pattern += escaped + "|";
-        }
-        base_pattern = special_pattern + base_pattern;
-    }
-    
-    // compile the regex
     int error_code;
     PCRE2_SIZE error_offset;
     
@@ -208,29 +188,47 @@ std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
     std::vector<std::string> matches;
     matches.reserve(text.length() / 10);
     
-    PCRE2_SIZE start_offset = 0;
-    while (start_offset < text.length()) {
+    size_t pos = 0;
+    while (pos < text.length()) {
+        // finding next special token from cur pos
+        size_t next_special = text.length();
+        size_t special_len = 0;
+        for (const auto& special : _special_tokens) {
+            size_t found = text.find(special, pos);
+            if (found < next_special) {
+                next_special = found;
+                special_len = special.length();
+            }
+        }
+        
+        // if special token is at cur pos, add to matches and advance
+        if (next_special == pos) {
+            matches.push_back(text.substr(pos, special_len));
+            pos += special_len;
+            continue;
+        }
+        
+        // otherwise, try regex match only up to next special token
         int result = pcre2_match(
             _compiled_pattern.get(),
             reinterpret_cast<PCRE2_SPTR>(text.c_str()),
-            text.length(),
-            start_offset,
+            next_special,
+            pos,
             0,
             _match_data.get(),
             nullptr
         );
         
-        if (result < 0) break; // TO-DO: handle this differently?
-        
-        PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(_match_data.get());
-        
-        if (ovector[1] > ovector[0]) {
+        if (result < 0) {
+            matches.push_back(std::string(1, text[pos]));
+            pos++;
+        } else {
+            PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(_match_data.get());
             matches.emplace_back(text, ovector[0], ovector[1] - ovector[0]);
+            pos = ovector[1];
         }
-        
-        start_offset = ovector[1];
     }
-
+    
     return matches;
 }
 

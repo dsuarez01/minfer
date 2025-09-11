@@ -90,12 +90,20 @@ namespace cpu {
         
         softmax(att_scores, att_scores, seq_len);
         
-        for (int d=0; d<d_head; ++d) {
-            float output = 0.0f;
-            for (int pos=0; pos < seq_len; ++pos) {
-                output += att_scores[pos] * vh[pos*kv_dim+d];
+        // for (int d=0; d<d_head; ++d) {
+        //     float output = 0.0f;
+        //     for (int pos=0; pos < seq_len; ++pos) {
+        //         output += att_scores[pos] * vh[pos*kv_dim+d];
+        //     }
+        //     att_out[d] = output;
+        // }
+        for (int pos = 0; pos<seq_len; ++pos) {
+            float score = att_scores[pos];
+            for (int d = 0; d<d_head; ++d) {
+                att_out[d] = (pos == 0) ? 
+                    score*vh[pos * kv_dim + d] :
+                    att_out[d]+score*vh[pos*kv_dim + d];
             }
-            att_out[d] = output;
         }
     }
 
@@ -173,8 +181,12 @@ namespace cpu {
                     
                 }
 
-                float32x4_t combined = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
-                x_out[i+i_block] = vaddvq_f32(combined);
+                x_out[i+i_block] = vaddvq_f32(
+                    vaddq_f32(
+                        vaddq_f32(acc0, acc1), 
+                        vaddq_f32(acc2, acc3)
+                    )
+                );
             }
         }
     }

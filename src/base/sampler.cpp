@@ -34,9 +34,8 @@ uint32_t Sampler::sample(const float* logits) {
     // greedy selection, idx with highest logit
     if (_temperature == 0.0f) {  
         return std::max_element(logits, logits+_vocab_size)-logits;  
-    }  
-  
-    // NOTE: disabled presence penalty calculation for now
+    }
+    
     // apply presence penalty, then sort logits and get top-k
     for (size_t i=0; i<_vocab_size; ++i) {
         _logits[i] = logits[i] - float(_seen_token_ids.count(i)) * _penalty_pres;

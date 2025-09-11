@@ -209,7 +209,7 @@ void Qwen3GQA::cpu_forward(
     }
 
     int heads_per_kv = n_heads/n_kv_heads;
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic)
     for (int h=0; h<n_heads; ++h) {
         int kv_head = h/heads_per_kv;
         size_t kv_offset = block_idx*max_seq_len*n_kv_heads*d_head + kv_head*d_head;
