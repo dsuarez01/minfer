@@ -121,6 +121,7 @@ void BaseModel::benchmark() {
     std::mt19937 gen(config->seed);
     
     // 512 randomly generated token ids for prefill
+    // intended to emulate pp512 in llama-bench (we won't win here, our impl. is not batched.)
     std::uniform_int_distribution<> distrib(0, config->vocab_size-1);
 
     stats->start_timer(); // PREFILL START
@@ -128,31 +129,25 @@ void BaseModel::benchmark() {
     size_t total_passes = 0;
     size_t kv_cache_bytes_read = 0;
 
-    for(size_t i = 0; i<10; ++i) {
+    for(size_t i = 0; i<512; ++i) {
         run_state->cur_pos = i;
         run_state->token_id = distrib(gen);
-        run_state->compute_logits = (i == 10-1);
+        run_state->compute_logits = (i == 512-1);
         forward(run_state);
         total_passes++;
-        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos +1);
+        kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos+1);
     }
 
     float prefill_time = stats->get_elapsed_sec(); // PREFILL END
     stats->prefill_time = prefill_time;
+    stats->ttft = prefill_time;
 
-    size_t generated = 0;
+    // intended to emulate tg128 in llama-bench
     stats->start_timer(); // GENERATE START
 
-    while (generated<128) {
-        uint32_t next_token = distrib(gen);
-        generated++;
-
-        if (generated == 1) {
-            stats->ttft = prefill_time + stats->get_elapsed_sec(); // time-to-first-token
-        }
-
-        run_state->cur_pos = 10+generated-1;
-        run_state->token_id = next_token;
+    for (size_t i=0; i<128; ++i) {
+        run_state->cur_pos = i;
+        run_state->token_id = distrib(gen);
         run_state->compute_logits = true;
         forward(run_state);
 
@@ -161,12 +156,12 @@ void BaseModel::benchmark() {
     }
 
     float throughput_time = stats->get_elapsed_sec(); // GENERATE END
-    stats->num_tokens_gen = generated;
-    stats->throughput = generated/throughput_time;
+    stats->num_tokens_gen = 128;
+    stats->throughput = 128/throughput_time;
 
-    // total mem reads
+    // total mem reads (an overestimate because lm_head weights aren't read when compute_logits is false)
     size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
     
-    stats->bandwidth = total_bytes / 1e9 / (throughput_time + prefill_time); // mem bandwidth in GB/sec
+    stats->bandwidth = total_bytes / 1e9 / (throughput_time+prefill_time); // mem bandwidth in GB/sec
     stats->print_stats();
 }
