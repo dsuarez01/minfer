@@ -14,7 +14,7 @@ namespace {
         }
         // add more types as needed...
         else {
-            static_assert(false, "Unsupported type for convert_to_float");
+            static_assert(false && "Unsupported type for convert_to_float");
         }
     }
 }

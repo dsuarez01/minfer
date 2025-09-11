@@ -17,10 +17,6 @@ using bf16_t = uint16_t;
     #include <arm_bf16.h>
 #endif
 
-#if defined(__AVX2__)
-    #include <immintrin.h>
-#endif
-
 #if defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC)
 inline float half_to_float(fp16_t x) {
     __fp16 half_val = *(__fp16*)&x;
@@ -38,14 +34,6 @@ inline float half_to_float(bf16_t x) {
 inline bf16_t float_to_half(float x) {
     bfloat16_t bf16_val = vcvth_bf16_f32(x);
     return *(bf16_t*)&bf16_val;
-}
-#elif defined(__F16C__)
-#include <immintrin.h>
-inline float half_to_float(fp16_t x) {
-    return _cvtsh_ss(x);
-}
-inline fp16_t float_to_half(float x) {
-    return _cvtss_sh(x, 0);
 }
 #else
 inline float half_to_float(uint16_t x) {
