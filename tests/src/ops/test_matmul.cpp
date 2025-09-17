@@ -172,7 +172,7 @@ void TestMatmul::test_fp16_matmul() {
     
     for (int i = 0; i < 512; i++) {
         weight_f32[i] = (i % 8 < 4) ? 1.0f : -0.5f;
-        weight_fp16[i] = float_to_half(weight_f32[i]);
+        weight_fp16[i] = float_to_fp16(weight_f32[i]);
     }
     
     float result_f32[16] = {0.0f};
@@ -204,7 +204,7 @@ void TestMatmul::test_bf16_matmul() {
     
     for (int i = 0; i < 512; i++) {
         weight_f32[i] = (i % 8 < 4) ? 1.0f : -0.5f;
-        weight_bf16[i] = float_to_half(weight_f32[i]);
+        weight_bf16[i] = float_to_bf16(weight_f32[i]);
     }
     
     float result_f32[16] = {0.0f};

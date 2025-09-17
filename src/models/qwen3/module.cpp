@@ -2,19 +2,24 @@
 #include "minfer/ops/cpu_ops.hpp"
 
 #include <cassert>
+#include <iostream>
 
 // === TYPE CONVERSION UTILS ===
 namespace {
-    template<typename T>
+    template<typename T, typename Tag>
     static float convert_to_float(T val) {
         if constexpr (std::is_same_v<T, float>) {
             return val;
-        } else if constexpr (std::is_same_v<T, fp16_t> || std::is_same_v<T, bf16_t>) {
-            return half_to_float(val);
-        }
-        // add more types as needed...
-        else {
-            static_assert(false && "Unsupported type for convert_to_float");
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+            if constexpr (std::is_same_v<Tag, fp16_tag>) {
+                return fp16_to_float(val);
+            } else if constexpr (std::is_same_v<Tag, bf16_tag>) {
+                return bf16_to_float(val);
+            } else {
+                static_assert(false && "Unsupported tag for uint16_t conversion");
+            }
+        } else {
+            static_assert(false && "Unsupported type in convert_to_float");
         }
     }
 }
@@ -48,7 +53,7 @@ template <typename WeightType, typename Tag>
 void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
     const WeightType* embed_vector = static_cast<WeightType*>(weight->data) + token_id * d_model;
     for (int i=0; i<d_model; ++i) {
-        x_out[i] = convert_to_float(embed_vector[i]);
+        x_out[i] = convert_to_float<WeightType, Tag>(embed_vector[i]); // ← Pass both template params
     }
 }
 
@@ -82,7 +87,7 @@ void Qwen3LMHead::cpu_forward(float* x_out, const float* x_in) {
     cpu::matmul<WeightType, Tag>(x_out, x_in, static_cast<WeightType*>(weight->data), d_out, d_in);
     if (bias) {
         for (int i=0; i<d_out; ++i) {
-            x_out[i] += convert_to_float(static_cast<WeightType*>(bias->data)[i]);
+            x_out[i] += convert_to_float<WeightType, Tag>(static_cast<WeightType*>(bias->data)[i]);
         }
     }
 }

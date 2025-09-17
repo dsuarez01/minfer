@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cfloat>
 #include <bitset>
+#include <Accelerate/Accelerate.h>
 
 namespace cpu {
     static constexpr int MAX_EXPERTS = 256; // adjust as needed, for visited set in router
@@ -90,12 +91,31 @@ namespace cpu {
         
         softmax(att_scores, att_scores, seq_len);
         
-        for (int pos = 0; pos<seq_len; ++pos) {
+        // for (int pos = 0; pos<seq_len; ++pos) {
+        //     float score = att_scores[pos];
+        //     for (int d = 0; d<d_head; ++d) {
+        //         att_out[d] = (pos == 0) ? 
+        //             score*vh[pos * kv_dim + d] :
+        //             att_out[d]+score*vh[pos*kv_dim + d];
+        //     }
+        // }
+
+        // for (int d=0; d<d_head; ++d) {
+        //     float output = 0.0f;
+        //     for (int pos=0; pos < seq_len; ++pos) {
+        //         output += att_scores[pos] * vh[pos*kv_dim+d];
+        //     }
+        //     att_out[d] = output;
+        // }
+
+        for (int d=0; d<d_head; ++d) {
+            att_out[d] = 0.0f;
+        }
+
+        for (int pos=0; pos < seq_len; ++pos) {
             float score = att_scores[pos];
-            for (int d = 0; d<d_head; ++d) {
-                att_out[d] = (pos == 0) ? 
-                    score*vh[pos * kv_dim + d] :
-                    att_out[d]+score*vh[pos*kv_dim + d];
+            for (int d=0; d<d_head; ++d) {
+                att_out[d] += score * vh[pos*kv_dim+d];
             }
         }
     }
@@ -149,62 +169,126 @@ namespace cpu {
     template<>
     void matmul<float, float_tag>(float* x_out, const float* x_in, const float* weight, int d_out, int d_in) {
         
-        assert(d_in % 16 == 0 && "d_in dimension must be divisible by 16");
+        const int TILE_SIZE=16; // needs to be a multiple of 16 (4 Neon pipelines)
 
-        // process in 16x16 tiling
-        // (allows for optimal access pattern assuming 64-bit cache lines)
-        #pragma omp parallel for schedule(dynamic,4) // each thread is assigned 4 chunks
-        for (int i=0; i<d_out; i+=16) {
-            int block_rows = std::min(16, d_out-i);
-            for (int i_block=0; i_block<block_rows; ++i_block) {
+        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+
+        #pragma omp parallel for
+        for (int i=0; i<d_out; i+=TILE_SIZE) {
+            int i_end = std::min(i+TILE_SIZE, d_out);
+            for (int ii=i; ii<i_end; ++ii) {
                 
                 float32x4_t acc0 = vdupq_n_f32(0.0f);
                 float32x4_t acc1 = vdupq_n_f32(0.0f);
                 float32x4_t acc2 = vdupq_n_f32(0.0f);
                 float32x4_t acc3 = vdupq_n_f32(0.0f);
                 
-                for (int j=0; j<d_in; j+=16) {
-                    
-                    int base_offset = (i+i_block)*d_in + j;
-                    
-                    acc0 = vfmaq_f32(acc0, vld1q_f32(x_in+j+0),  vld1q_f32(weight+base_offset+0));
-                    acc1 = vfmaq_f32(acc1, vld1q_f32(x_in+j+4),  vld1q_f32(weight+base_offset+4));
-                    acc2 = vfmaq_f32(acc2, vld1q_f32(x_in+j+8),  vld1q_f32(weight+base_offset+8));
-                    acc3 = vfmaq_f32(acc3, vld1q_f32(x_in+j+12), vld1q_f32(weight+base_offset+12));
+                for (int j=0; j<d_in; j+=TILE_SIZE) {
+                    for (int jj=j; jj<j+TILE_SIZE; jj+=16) {
+                        int base_offset = ii*d_in + jj;
+
+                        acc0 = vfmaq_f32(acc0, vld1q_f32(x_in+jj+0),  vld1q_f32(weight+base_offset+0));
+                        acc1 = vfmaq_f32(acc1, vld1q_f32(x_in+jj+4),  vld1q_f32(weight+base_offset+4));
+                        acc2 = vfmaq_f32(acc2, vld1q_f32(x_in+jj+8),  vld1q_f32(weight+base_offset+8));
+                        acc3 = vfmaq_f32(acc3, vld1q_f32(x_in+jj+12), vld1q_f32(weight+base_offset+12));
+                    }
                     
                 }
 
-                x_out[i+i_block] = vaddvq_f32(
-                    vaddq_f32(
-                        vaddq_f32(acc0, acc1), 
-                        vaddq_f32(acc2, acc3)
-                    )
-                );
+                x_out[ii] = vaddvq_f32(vaddq_f32(acc0, acc1) + vaddq_f32(acc2, acc3));
             }
         }
     }
 
-    // TO-DO: SIMD
     template<>
     void matmul<fp16_t, fp16_tag>(float* x_out, const float* x_in, const fp16_t* weight, int d_out, int d_in) {
-        for (int i=0; i<d_out; i++) {
-            float cur_sum = 0.0f;
-            for (int j=0; j<d_in; j++) {
-                cur_sum += half_to_float(weight[i*d_in + j]) * x_in[j];
+        const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon pipelines)
+        
+        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+
+        #pragma omp parallel for
+        for (int i=0; i<d_out; i+=TILE_SIZE) {
+            int i_end = std::min(i+TILE_SIZE, d_out);
+            
+            for (int ii = i; ii < i_end; ++ii) { // rows w/in tile processed one at a time
+                float32x4_t acc0 = vdupq_n_f32(0.0f);
+                float32x4_t acc1 = vdupq_n_f32(0.0f);
+                float32x4_t acc2 = vdupq_n_f32(0.0f);
+                float32x4_t acc3 = vdupq_n_f32(0.0f);
+                
+                
+                for (int j=0; j<d_in; j+=TILE_SIZE) {
+                    
+                    for (int jj = j; jj<j+TILE_SIZE; jj+=16) { // columns w/in tile processed 16 a time (4 Neon pipelines)
+                        int base_offset = ii*d_in + jj;
+                        
+                        float16x8_t w01 = vld1q_f16((const __fp16*)(weight+base_offset+0));
+                        float32x4_t w0 = vcvt_f32_f16(vget_low_f16(w01));
+                        float32x4_t w1 = vcvt_f32_f16(vget_high_f16(w01));
+                        float16x8_t w23 = vld1q_f16((const __fp16*)(weight+base_offset+8));
+                        float32x4_t w2 = vcvt_f32_f16(vget_low_f16(w23));
+                        float32x4_t w3 = vcvt_f32_f16(vget_high_f16(w23));
+
+                        float32x4_t x0 = vld1q_f32(x_in+jj+0);
+                        float32x4_t x1 = vld1q_f32(x_in+jj+4);
+                        float32x4_t x2 = vld1q_f32(x_in+jj+8);
+                        float32x4_t x3 = vld1q_f32(x_in+jj+12);
+
+                        acc0 = vfmaq_f32(acc0, x0, w0);
+                        acc1 = vfmaq_f32(acc1, x1, w1);
+                        acc2 = vfmaq_f32(acc2, x2, w2);
+                        acc3 = vfmaq_f32(acc3, x3, w3);
+                    }
+                }
+                
+                x_out[ii] = vaddvq_f32(vaddq_f32(acc0, acc1) + vaddq_f32(acc2, acc3));
             }
-            x_out[i] = cur_sum;
         }
     }
 
-    // TO-DO: SIMD
     template<>
     void matmul<bf16_t, bf16_tag>(float* x_out, const float* x_in, const bf16_t* weight, int d_out, int d_in) {
-        for (int i=0; i<d_out; i++) {
-            float cur_sum = 0.0f;
-            for (int j=0; j<d_in; j++) {
-                cur_sum += half_to_float(weight[i*d_in + j]) * x_in[j];
+        const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon pipelines)
+        
+        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+
+        #pragma omp parallel for
+        for (int i=0; i<d_out; i+=TILE_SIZE) {
+            int i_end = std::min(i+TILE_SIZE, d_out);
+            
+            for (int ii = i; ii < i_end; ++ii) { // rows w/in tile processed one at a time
+                float32x4_t acc0 = vdupq_n_f32(0.0f);
+                float32x4_t acc1 = vdupq_n_f32(0.0f);
+                float32x4_t acc2 = vdupq_n_f32(0.0f);
+                float32x4_t acc3 = vdupq_n_f32(0.0f);
+                
+                
+                for (int j=0; j<d_in; j+=TILE_SIZE) {
+                    
+                    for (int jj = j; jj<j+TILE_SIZE; jj+=16) { // columns w/in tile processed 16 a time (4 Neon pipelines)
+                        int base_offset = ii*d_in + jj;
+
+                        bfloat16x8_t w01 = vld1q_bf16((const __bf16*)(weight+base_offset+0));
+                        float32x4_t w0 = vcvt_f32_bf16(vget_low_bf16(w01));
+                        float32x4_t w1 = vcvt_f32_bf16(vget_high_bf16(w01));
+                        bfloat16x8_t w23 = vld1q_bf16((const __bf16*)(weight+base_offset+8));
+                        float32x4_t w2 = vcvt_f32_bf16(vget_low_bf16(w23));
+                        float32x4_t w3 = vcvt_f32_bf16(vget_high_bf16(w23));
+
+                        float32x4_t x0 = vld1q_f32(x_in+jj+0);
+                        float32x4_t x1 = vld1q_f32(x_in+jj+4);
+                        float32x4_t x2 = vld1q_f32(x_in+jj+8);
+                        float32x4_t x3 = vld1q_f32(x_in+jj+12);
+
+                        acc0 = vfmaq_f32(acc0, x0, w0);
+                        acc1 = vfmaq_f32(acc1, x1, w1);
+                        acc2 = vfmaq_f32(acc2, x2, w2);
+                        acc3 = vfmaq_f32(acc3, x3, w3);
+                    }
+                }
+                
+                x_out[ii] = vaddvq_f32(vaddq_f32(acc0, acc1) + vaddq_f32(acc2, acc3));
             }
-            x_out[i] = cur_sum;
         }
     }
 

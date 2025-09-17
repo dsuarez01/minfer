@@ -12,6 +12,7 @@ BaseModel::BaseModel(const ModelData& model_data, const RunParams& run_params) {
 
 void BaseModel::append_layer(std::shared_ptr<BaseLayer> layer) {
     _read_bytes += layer->get_read_bytes();
+    // std::cout << "qdtype: " << dtype_to_str(layer->get_qdtype()) << std::endl;
     _layers.push_back(layer);
 }
 
@@ -104,7 +105,7 @@ void BaseModel::generate(std::string& input_text) {
         kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos + 1); // read from pos [0, 1, ..., i]
     }
 
-    std::cout << std::endl;
+    std::cout << "\n" << std::endl;
 
     float throughput_time = stats->get_elapsed_sec(); // GENERATE END
     stats->num_tokens_gen = generated;

@@ -18,24 +18,28 @@ using bf16_t = uint16_t;
 #endif
 
 #if defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC)
-inline float half_to_float(fp16_t x) {
+inline float fp16_to_float(fp16_t x) {
     __fp16 half_val = *(__fp16*)&x;
-    return (float)half_val;  // Automatic promotion
+    return (float)half_val;
 }
-inline fp16_t float_to_half(float x) {
+inline fp16_t float_to_fp16(float x) {
     __fp16 half_val = (__fp16)x;
     return *(fp16_t*)&half_val;
 }
-#elif defined(__ARM_FEATURE_BF16_SCALAR_ARITHMETIC)
-inline float half_to_float(bf16_t x) {
+#endif
+
+#if defined(__ARM_FEATURE_BF16_SCALAR_ARITHMETIC)
+inline float bf16_to_float(bf16_t x) {
     bfloat16_t bf16_val = *(bfloat16_t*)&x;
     return vcvtah_f32_bf16(bf16_val);
 }
-inline bf16_t float_to_half(float x) {
+inline bf16_t float_to_bf16(float x) {
     bfloat16_t bf16_val = vcvth_bf16_f32(x);
     return *(bf16_t*)&bf16_val;
 }
-#else
+#endif
+
+#if !defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC) && !defined(__ARM_FEATURE_BF16_SCALAR_ARITHMETIC)
 inline float half_to_float(uint16_t x) {
     assert(false && "This platform doesn't support FP16 or BF16. Check compiler flags");
     return 0.0f;
