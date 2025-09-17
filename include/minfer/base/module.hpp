@@ -91,7 +91,7 @@ public:
 protected:
     size_t max_seq_len;
     int block_idx, d_model;
-    int n_heads, n_kv_heads, d_head, d_k_head, d_v_head, d_rotary, d_k_rotary;
+    int n_heads, n_kv_heads, d_head, d_rotary;
     float eps, freq_base;
 
     std::vector<float> rope_table;
