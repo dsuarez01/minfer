@@ -71,7 +71,10 @@ GQA::GQA(
     wq(wq), wk(wk), wv(wv), 
     wo(wo), wq_norm(wq_norm), wk_norm(wk_norm),
     w_attnnorm(w_attnnorm),
-    BaseLayer(qdtype, device) {
+    BaseLayer(qdtype, device),
+    rope_table(
+        compute_rope_table(max_seq_len, d_rotary, freq_base)
+    ) {
     append_parameter(wq);
     append_parameter(wk);
     append_parameter(wv);
@@ -79,6 +82,20 @@ GQA::GQA(
     append_parameter(wq_norm);
     append_parameter(wk_norm);
     append_parameter(w_attnnorm);
+}
+
+std::vector<float> GQA::compute_rope_table(size_t max_seq_len, int d_rotary, float freq_base) {
+    std::vector<float> table(max_seq_len * d_rotary);
+
+    for (size_t pos=0; pos<max_seq_len; ++pos) {
+        for (int i=0; i<d_rotary/2; ++i) {
+            float freq = 1.0f / std::powf(freq_base, (2.0f * i)/d_rotary);
+            table[pos*d_rotary + 2*i] = std::cosf(pos*freq);
+            table[pos*d_rotary + 2*i+1] = std::sinf(pos*freq);
+        }
+    }
+
+    return table;
 }
 
 // === MOE ===

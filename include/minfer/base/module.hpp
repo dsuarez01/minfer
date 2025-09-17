@@ -93,8 +93,13 @@ protected:
     int block_idx, d_model;
     int n_heads, n_kv_heads, d_head, d_k_head, d_v_head, d_rotary, d_k_rotary;
     float eps, freq_base;
+
+    std::vector<float> rope_table;
     
     TPtr wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm;
+
+private:
+    static std::vector<float> compute_rope_table(size_t max_seq_len, int d_rotary, float freq_base);
 };
 
 class MoE : public BaseLayer {

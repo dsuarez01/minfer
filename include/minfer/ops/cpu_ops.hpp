@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 struct float_tag {};
 struct fp16_tag {};
@@ -55,9 +56,9 @@ namespace cpu {
     float silu(float x);
     void softmax(float* x_out, const float* x_in, int size);
     void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos);
+            int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
     void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos);
+            int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
     void attn(float* att_scores, float* att_out, const float* q_head, const float* kh, const float* vh,
             int seq_len, int d_head, int kv_dim);
     void route(const float* x_norm, int* active_experts, float* active_experts_scores, 

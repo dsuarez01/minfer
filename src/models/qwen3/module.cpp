@@ -203,8 +203,8 @@ void Qwen3GQA::cpu_forward(
         cpu::rmsnorm(k_buf + h*d_head, k_buf + h*d_head, static_cast<float*>(wk_norm->data), d_head, eps);
     }
 
-    cpu::neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
-    cpu::neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
+    cpu::neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos, rope_table);
+    cpu::neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos, rope_table);
 
     // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_head]
     size_t cache_offset = block_idx * max_seq_len * n_kv_heads * d_head + cur_pos * n_kv_heads * d_head;
@@ -214,7 +214,7 @@ void Qwen3GQA::cpu_forward(
     }
 
     int heads_per_kv = n_heads/n_kv_heads;
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for
     for (int h=0; h<n_heads; ++h) {
         int kv_head = h/heads_per_kv;
         size_t kv_offset = block_idx*max_seq_len*n_kv_heads*d_head + kv_head*d_head;

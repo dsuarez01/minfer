@@ -34,19 +34,23 @@ namespace cpu {
     }
 
     void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-        int d_rotary, float freq_base, int pos) {
+        int d_rotary, float freq_base, int pos, std::vector<float>& rope_table) {
         for (int i=0; i<d_flat; i+=2) {
             float x_0 = x_in[i];
             float x_1 = x_in[i+1];
 
-            int idx_in_head = i % d_head;
-            float freq = idx_in_head >= d_rotary ? 0.0f : 1.0f / std::powf(freq_base, (float) idx_in_head/ (float) d_rotary);
-            float angle = pos*freq;
-            float c_angle = std::cosf(angle);
-            float s_angle = std::sinf(angle);
+            int ii = i % d_head;
+            // float freq = ii >= d_rotary ? 0.0f : 1.0f / std::powf(freq_base, (float) ii/ (float) d_rotary);
+            // float angle = pos*freq;
+            
+            // float c_angle = std::cosf(angle);
+            // float s_angle = std::sinf(angle);
 
-            float new_x_0 = c_angle*x_0 - s_angle*x_1;
-            float new_x_1 = s_angle*x_0 + c_angle*x_1;
+            float cos_angle = ii >= d_rotary ? 1.0f : rope_table[pos*d_rotary + 2*ii];
+            float sine_angle = ii >= d_rotary ? 0.0f : rope_table[pos*d_rotary + 2*ii+1];
+
+            float new_x_0 = cos_angle*x_0 - sine_angle*x_1;
+            float new_x_1 = sine_angle*x_0 + cos_angle*x_1;
             
             x_out[i] = new_x_0;
             x_out[i+1] = new_x_1;
@@ -55,7 +59,7 @@ namespace cpu {
 
     void neox_rope(
         float* x_out, const float* x_in, int d_flat, int d_head, 
-        int d_rotary, float freq_base, int pos
+        int d_rotary, float freq_base, int pos, std::vector<float>& rope_table
     ) {
         for (int i=0; i<d_flat; ) {
             int i_0 = i%d_head;
@@ -63,13 +67,13 @@ namespace cpu {
             float x_0 = x_in[i_0 + (i / d_head) * d_head];
             float x_1 = x_in[i_1 + (i / d_head) * d_head]; 
 
-            float freq = i_0 < d_rotary / 2 ? 1.0f / std::powf(freq_base, 2.0f * i_0 / d_rotary) : 0.0f;
-            float angle = pos * freq;
-            float c_angle = std::cosf(angle);
-            float s_angle = std::sinf(angle);
+            // float freq = i_0 < d_rotary / 2 ? 1.0f / std::powf(freq_base, 2.0f * i_0 / d_rotary) : 0.0f;
+            // float angle = pos * freq;
+            float cos_angle = i_0 >= d_rotary / 2 ? 1.0f : rope_table[pos*d_rotary + 2*i_0];
+            float sine_angle = i_0 >= d_rotary / 2 ? 0.0f : rope_table[pos*d_rotary + 2*i_0+1];
 
-            x_out[i_0 + (i / d_head) * d_head] = c_angle * x_0 - s_angle * x_1;
-            x_out[i_1 + (i / d_head) * d_head] = s_angle * x_0 + c_angle * x_1;
+            x_out[i_0 + (i / d_head) * d_head] = cos_angle * x_0 - sine_angle * x_1;
+            x_out[i_1 + (i / d_head) * d_head] = sine_angle * x_0 + cos_angle * x_1;
             i += ((i+1)%d_head == d_rotary/2) ? d_rotary/2 + 1 : 1;
         }
     }
