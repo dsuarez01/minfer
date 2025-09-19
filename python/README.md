@@ -12,4 +12,4 @@ cd ..
 uv run python/gpt2_convert.py <path_to_gguf_file>
 ```
 
-This will result in an identically-named GGUF file with the modified tokenizer data in the same parent directory as `<path_to_gguf_file>`. As a quick check, run the tokenizer test on the modified GGUF file via `./build/tests/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.
+The new GGUF file with the modified tokenizer data will replace the GGUF file located at `<path_to_gguf_file>`. As a quick check for correctness, run the tokenizer test on the modified GGUF file via `./build/tests/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.
