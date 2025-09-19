@@ -1,6 +1,6 @@
 ## GGUF Tokenizer Data Conversion Tool (gpt2_convert.py)
 
-A convenience utility that reverses the (Unicode) codepoint mapping "hack" GPT-2 tokenizers commonly employ, where non-printable chars have codepoints that are shifted up by 256 (to printable codepoints for easier debugging/viewing, presumably). The tool undoes this mapping in the `tokenizer.ggml.tokens` and `tokenizer.ggml.merges`; note that it effectively modifies the GGUF file **in-place**. Ensure that the attribute `tokenizer.ggml.model` exists and is equal to `gpt2`.
+A convenience utility that reverses the (Unicode) codepoint mapping "hack" GPT-2 tokenizers commonly employ, where non-printable chars have codepoints that are shifted up by 256 (to printable codepoints for easier debugging/viewing, presumably). The tool undoes this mapping for the values located at the KV metadata attributes `tokenizer.ggml.tokens` and `tokenizer.ggml.merges` in the original GGUF file; note that it effectively modifies the GGUF file **in-place**. Ensure that the attribute `tokenizer.ggml.model` exists and is equal to `gpt2`.
 
 Steps to use from the project root:
 
