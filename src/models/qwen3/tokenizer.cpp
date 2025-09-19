@@ -247,20 +247,6 @@ std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
         for (const auto& w : word) {
             auto it = _vocab_to_id.find(w);
             if (it == _vocab_to_id.end()) {
-                std::cout << "Missing BPE token: '";
-                for (unsigned char c : w) {
-                    std::cout << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
-                }
-                std::cout << "' (displayed as: '" << w << "')" << std::endl;
-                
-                // Check if space exists anywhere in vocab map
-                auto space_it = _vocab_to_id.find(" ");
-                if (space_it != _vocab_to_id.end()) {
-                    std::cout << "Space found at token ID: " << space_it->second << std::endl;
-                } else {
-                    std::cout << "Space not found in vocab map at all!" << std::endl;
-                }
-                
                 throw std::runtime_error("Byte token '" + w + "' not found in vocab to id map");
             }
             result.push_back(it->second);
@@ -300,20 +286,6 @@ std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
     for (const auto& w : word) {
         auto it = _vocab_to_id.find(w);
         if (it == _vocab_to_id.end()) {
-            std::cout << "Missing BPE token: '";
-            for (unsigned char c : w) {
-                std::cout << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
-            }
-            std::cout << "' (displayed as: '" << w << "')" << std::endl;
-            
-            // Check if space exists anywhere in vocab map
-            auto space_it = _vocab_to_id.find(" ");
-            if (space_it != _vocab_to_id.end()) {
-                std::cout << "Space found at token ID: " << space_it->second << std::endl;
-            } else {
-                std::cout << "Space not found in vocab map at all!" << std::endl;
-            }
-            
             throw std::runtime_error("BPE token '" + w + "' not found in vocab to id map");
         }
         result.push_back(it->second);
