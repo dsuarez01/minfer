@@ -8,6 +8,107 @@
 #include <unistd.h>
 #include <regex>
 
+namespace {
+    // mutually recursive fcns need forward defn
+    GGUFString read_str(uint8_t*& ptr, uint8_t* end, size_t file_size);
+    GGUFArray read_arr(uint8_t*& ptr, uint8_t* end, size_t file_size);
+    MetadataValue read_val(uint8_t*& ptr, ValueType type, uint8_t* end, size_t file_size);
+
+    template<typename T>
+    T read(uint8_t*& ptr, uint8_t* end) {
+        if (ptr + sizeof(T) > end) {
+            throw std::runtime_error("Read past file end");
+        }
+        T value;
+        std::memcpy(&value, ptr, sizeof(T));
+        ptr += sizeof(T);
+        return value;
+    }
+
+    size_t mul(size_t a, size_t b) {
+        if (a != 0 && b > SIZE_MAX / a) {
+            throw std::runtime_error("Size overflow");
+        }
+        return a * b;
+    }
+
+    void check(size_t size, size_t max) {
+        if (size > max) {
+            throw std::runtime_error("Size too large");
+        }
+    }
+
+    bool is_valid_gguf_key(const std::string& key) {
+        // len check
+        if (key.length() > 65535) return false;
+        
+        // ASCII check
+        for (char c : key) {
+            if (static_cast<unsigned char>(c) > 127) return false;
+        }
+        
+        // regex check: lower_snake_case pattern w dots
+        return std::regex_match(key, std::regex("^[a-z0-9_]+(?:\\.[a-z0-9_]+)*$"));
+    }
+
+    GGUFString read_str(uint8_t*& ptr, uint8_t* end, size_t file_size) {
+        GGUFString str;
+        str.len = read<uint64_t>(ptr, end);
+        
+        // check: str len reasonable
+        check(str.len, file_size);
+        
+        // check: enough bytes remaining
+        if (ptr + str.len > end) {
+            throw std::runtime_error("String extends past file end");
+        }
+        
+        str.string = std::string(reinterpret_cast<const char*>(ptr), str.len);
+        ptr += str.len;
+        return str;
+    }
+
+    GGUFArray read_arr(uint8_t*& ptr, uint8_t* end, size_t file_size) {
+        GGUFArray arr;
+        arr.type = read<ValueType>(ptr, end);
+        arr.len = read<uint64_t>(ptr, end);
+        
+        // check: array length reasonable
+        check(arr.len, file_size);
+        
+        arr.array.reserve(arr.len);
+        for (uint64_t i = 0; i < arr.len; ++i) {
+            arr.array.push_back(read_val(ptr, arr.type, end, file_size));
+        }
+        return arr;
+    }
+
+    MetadataValue read_val(uint8_t*& ptr, ValueType type, uint8_t* end, size_t file_size) {
+        switch (type) {
+            case ValueType::UINT8:   return read<uint8_t>(ptr, end);
+            case ValueType::INT8:    return read<int8_t>(ptr, end);
+            case ValueType::UINT16:  return read<uint16_t>(ptr, end);
+            case ValueType::INT16:   return read<int16_t>(ptr, end);
+            case ValueType::UINT32:  return read<uint32_t>(ptr, end);
+            case ValueType::INT32:   return read<int32_t>(ptr, end);
+            case ValueType::FLOAT32: return read<float>(ptr, end);
+            case ValueType::UINT64:  return read<uint64_t>(ptr, end);
+            case ValueType::INT64:   return read<int64_t>(ptr, end);
+            case ValueType::FLOAT64: return read<double>(ptr, end);
+            case ValueType::BOOL:    return static_cast<bool>(read<uint8_t>(ptr, end));
+            case ValueType::STRING:  return read_str(ptr, end, file_size);
+            case ValueType::ARRAY:   return read_arr(ptr, end, file_size);
+            default:
+                std::cerr << "Unknown ValueType: " << static_cast<uint32_t>(type) << std::endl;
+                throw std::runtime_error("Invalid metadata value type");
+        }
+    }
+
+    uint64_t align_offset(uint64_t offset, uint64_t alignment) {
+        return offset + (alignment - (offset % alignment)) % alignment;
+    }
+}
+
 std::string tensor_type_to_str(TensorType t_type) {
     switch (t_type) {
         case TensorType::F32:     return "F32";
@@ -47,64 +148,6 @@ std::string tensor_type_to_str(TensorType t_type) {
     }
 }
 
-bool is_valid_gguf_key(const std::string& key) {
-    return key.length() <= 65535 && 
-           std::regex_match(key, std::regex("^[a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)*$"));
-}
-
-template <typename T>
-T read_value(uint8_t*& ptr) {
-    T value;
-    std::memcpy(&value, ptr, sizeof(T));
-    ptr += sizeof(T);
-    return value;
-}
-
-GGUFString read_string(uint8_t*& ptr) {
-    GGUFString str;
-    str.len = read_value<uint64_t>(ptr);
-    str.string = std::string(reinterpret_cast<const char*>(ptr), str.len);
-    ptr += str.len;
-    return str;
-}
-
-GGUFArray read_array(uint8_t*& ptr) {
-    GGUFArray arr;
-    arr.type = read_value<ValueType>(ptr);
-    arr.len = read_value<uint64_t>(ptr);
-    arr.array.reserve(arr.len);
-
-    for (uint64_t i = 0; i < arr.len; ++i) {
-        arr.array.push_back(read_metadata_value(ptr, arr.type));
-    }
-    return arr;
-}
-
-MetadataValue read_metadata_value(uint8_t*& ptr, ValueType type) {
-    switch (type) {
-        case ValueType::UINT8:   return read_value<uint8_t>(ptr);
-        case ValueType::INT8:    return read_value<int8_t>(ptr);
-        case ValueType::UINT16:  return read_value<uint16_t>(ptr);
-        case ValueType::INT16:   return read_value<int16_t>(ptr);
-        case ValueType::UINT32:  return read_value<uint32_t>(ptr);
-        case ValueType::INT32:   return read_value<int32_t>(ptr);
-        case ValueType::FLOAT32: return read_value<float>(ptr);
-        case ValueType::UINT64:  return read_value<uint64_t>(ptr);
-        case ValueType::INT64:   return read_value<int64_t>(ptr);
-        case ValueType::FLOAT64: return read_value<double>(ptr);
-        case ValueType::BOOL:    return static_cast<bool>(read_value<uint8_t>(ptr));
-        case ValueType::STRING:  return read_string(ptr);
-        case ValueType::ARRAY:   return read_array(ptr);
-        default:
-            std::cerr << "Unknown ValueType: " << static_cast<uint32_t>(type) << std::endl;
-            throw std::runtime_error("Invalid metadata value type");
-    }
-}
-
-uint64_t align_offset(uint64_t offset, uint64_t alignment) {
-    return offset + (alignment - (offset % alignment)) % alignment;
-}
-
 int GGUFFile::from_file(const std::string& filename) {
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd == -1) {
@@ -117,82 +160,95 @@ int GGUFFile::from_file(const std::string& filename) {
     }
     size_t size = st.st_size;
     void* data = mmap(NULL, size, PROT_READ , MAP_PRIVATE, fd, 0);
-        if (data == MAP_FAILED) {
+    if (data == MAP_FAILED) {
         close(fd);
         return -1;
     }
+
+    // store for destructor cleanup
+    mmap_data = data;
+    mmap_size = size;
 
     close(fd); // doesn't invalidate mapping
 
     uint8_t* ptr = static_cast<uint8_t*>(data);
     uint8_t* start = ptr;
+    uint8_t* end = ptr + size;
 
-    header.magic = read_value<uint32_t>(ptr);
-    header.version = read_value<uint32_t>(ptr);
-    header.tensor_count = read_value<uint64_t>(ptr);
-    header.metadata_kv_count = read_value<uint64_t>(ptr);
+    try {
+        header.magic = read<uint32_t>(ptr, end);
+        header.version = read<uint32_t>(ptr, end);
+        header.tensor_count = read<uint64_t>(ptr, end);
+        header.metadata_kv_count = read<uint64_t>(ptr, end);
 
-    if (header.magic != 0x46554747) {
-        std::cerr << "[Bad file] invalid magic number: 0x" << std::hex << header.magic << std::endl;
-        munmap(data,size);
-        return -1;
-    }
-
-    if (header.version != 3) {
-        std::cerr << "[Bad file] only GGUF v3 supported, file version number is: " << header.version << std::endl;
-        munmap(data,size);
-        return -1;
-    }
-
-    if (header.tensor_count == 0 || header.metadata_kv_count == 0) {
-        std::cerr << "[Bad file] tensor count or metadata KV count is 0. File has tensor_count of " << header.tensor_count << " and metadata_kv_count of " << header.metadata_kv_count << std::endl;
-        munmap(data,size);
-        return -1;
-    }
-
-    header.metadata_kv.reserve(header.metadata_kv_count);
-    for (uint64_t i = 0; i < header.metadata_kv_count; ++i) {
-        KVPair kv;
-        kv.key = read_string(ptr);
-        
-        if (!is_valid_gguf_key(kv.key.string)) {
-            std::cerr << "[Bad file] invalid key format: " << kv.key.string << std::endl;
-            munmap(data, size);
+        if (header.magic != 0x46554747) {
+            std::cerr << "[Bad file] invalid magic number: 0x" << std::hex << header.magic << std::endl;
             return -1;
         }
-        
-        kv.value_type = read_value<ValueType>(ptr);
-        kv.value = read_metadata_value(ptr, kv.value_type);
-        header.metadata_kv.push_back(std::move(kv));
-    }
 
-    tensor_infos.reserve(header.tensor_count);
-    for (uint64_t i = 0; i < header.tensor_count; ++i) {
-        TensorInfo info;
-        info.name = read_string(ptr);
-        info.n_dimensions = read_value<uint32_t>(ptr);
-        info.dimensions.resize(info.n_dimensions);
-        for (uint32_t j = 0; j < info.n_dimensions; ++j) {
-            info.dimensions[j] = read_value<uint64_t>(ptr);
+        if (header.version != 3) {
+            std::cerr << "[Bad file] only GGUF v3 supported, file version number is: " << header.version << std::endl;
+            return -1;
         }
-        info.type = read_value<TensorType>(ptr);
-        info.offset = read_value<uint64_t>(ptr);
-        tensor_infos.push_back(std::move(info));
-    }
 
-    uint32_t alignment = 32; // see spec
-    for (const KVPair& kv : header.metadata_kv) {
-        if (kv.key.string == "general.alignment" 
-            && std::holds_alternative<uint32_t>(kv.value)) {
-            alignment = std::get<uint32_t>(kv.value);
-            break;
+        if (header.tensor_count == 0 || header.metadata_kv_count == 0) {
+            std::cerr << "[Bad file] tensor count or metadata KV count is 0. File has tensor_count of " << header.tensor_count << " and metadata_kv_count of " << header.metadata_kv_count << std::endl;
+            return -1;
         }
-    }
 
-    uint64_t current_pos = ptr - start;
-    uint64_t aligned_pos = align_offset(current_pos, alignment);
-    tensor_data = start + aligned_pos;
-    tensor_data_size = size - static_cast<size_t>(aligned_pos);
+        header.metadata_kv.reserve(header.metadata_kv_count);
+        for (uint64_t i=0; i<header.metadata_kv_count; ++i) {
+            KVPair kv;
+            kv.key = read_str(ptr, end, size);
+            
+            if (!is_valid_gguf_key(kv.key.string)) {
+                std::cerr << "[Bad file] invalid key format: " << kv.key.string << std::endl;
+                return -1;
+            }
+            
+            kv.value_type = read<ValueType>(ptr, end);
+            kv.value = read_val(ptr, kv.value_type, end, size);
+            header.metadata_kv.push_back(std::move(kv));
+        }
+
+        tensor_infos.reserve(header.tensor_count);
+        for (uint64_t i=0; i<header.tensor_count; ++i) {
+            TensorInfo info;
+            info.name = read_str(ptr, end, size);
+            info.n_dimensions = read<uint32_t>(ptr, end);
+            info.dimensions.resize(info.n_dimensions);
+            for (uint32_t j=0; j<info.n_dimensions; ++j) {
+                info.dimensions[j] = read<uint64_t>(ptr, end);
+            }
+            info.type = read<TensorType>(ptr, end);
+            info.offset = read<uint64_t>(ptr, end);
+            tensor_infos.push_back(std::move(info));
+        }
+
+        uint32_t alignment = 32; // see spec
+        for (const KVPair& kv : header.metadata_kv) {
+            if (kv.key.string == "general.alignment" 
+                && std::holds_alternative<uint32_t>(kv.value)) {
+                alignment = std::get<uint32_t>(kv.value);
+                break;
+            }
+        }
+
+        uint64_t current_pos = ptr - start;
+        uint64_t aligned_pos = align_offset(current_pos, alignment);
+        tensor_data = start + aligned_pos;
+        tensor_data_size = size - static_cast<size_t>(aligned_pos);
+
+    } catch (const std::exception& e) {
+        std::cerr << "[Parse error] " << e.what() << std::endl;
+        return -1;
+    }
 
     return 0;
+}
+
+GGUFFile::~GGUFFile() {
+    if (mmap_data) {
+        munmap(mmap_data, mmap_size);
+    }
 }

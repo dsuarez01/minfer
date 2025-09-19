@@ -18,12 +18,12 @@ enum class DataType { F32 = 0, F16 = 1, BF16 = 2, INVALID = 3 };
 enum class Device { CPU, GPU };
 
 struct Tensor {
-    mutable void* data = nullptr;
+    void* data = nullptr;
     std::string name;
     std::array<int,4> shape = {0,0,0,0};
     DataType dtype;
     size_t size_bytes = 0;
-    mutable Device device = Device::CPU;
+    Device device = Device::CPU;
     
     void set_device(Device target_device);
     json to_json() const;
@@ -33,6 +33,7 @@ struct ModelData {
     json metadata;
     json tensor_metadata;
     std::unordered_map<std::string, std::shared_ptr<Tensor>> tensors;
+    GGUFFile gguf_file;
     int from_file(const std::string& filename);
 };
 

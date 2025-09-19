@@ -117,9 +117,6 @@ struct GGUFArray {
     std::vector<MetadataValue> array;
 };
 
-MetadataValue read_metadata_value(uint8_t*& ptr, ValueType type);
-bool is_valid_gguf_key(const std::string& key);
-
 struct KVPair {
     // The key of the metadata. It is a standard GGUF string, with the following caveats:
     // - It must be a valid ASCII string.
@@ -157,8 +154,6 @@ struct GGUFHeader {
     // The metadata key-value pairs.
     std::vector<KVPair> metadata_kv;
 };
-
-uint64_t align_offset(uint64_t offset, uint64_t alignment);
 
 struct TensorInfo {
     // The name of the tensor. It is a standard GGUF string, with the caveat that
@@ -210,5 +205,12 @@ struct GGUFFile {
     // should be padded to `ALIGNMENT` bytes.
     uint8_t* tensor_data;
     size_t tensor_data_size;
+
     int from_file(const std::string& filename);
+
+    ~GGUFFile();
+
+private:
+    void* mmap_data = nullptr;
+    size_t mmap_size = 0;
 };

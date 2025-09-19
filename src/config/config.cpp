@@ -54,6 +54,19 @@ namespace {
             }
         }, value);
     }
+
+    size_t mul(size_t a, size_t b) {
+        if (a != 0 && b > SIZE_MAX / a) {
+            throw std::runtime_error("Size overflow");
+        }
+        return a * b;
+    }
+
+    void check(size_t size, size_t max) {
+        if (size > max) {
+            throw std::runtime_error("Size too large");
+        }
+    }
 }
 
 DataType tensor_to_data_type(TensorType t_type) {
@@ -104,7 +117,7 @@ json Tensor::to_json() const {
         {"shape", shape},
         {"dtype", dtype_to_str(dtype)},
         {"size_bytes", size_bytes},
-        {"device", device == Device::CPU ? "CPU" : "CUDA"},
+        {"device", device == Device::CPU ? "CPU" : "GPU"},
         {"data_ptr", ss.str()}
     };
 }
@@ -118,67 +131,65 @@ void Tensor::set_device(Device target_device) {
 }
 
 int ModelData::from_file(const std::string& filename) {
-    // TO-DO, make parsing safe
-    GGUFFile gguf_file;
     if (gguf_file.from_file(filename) == -1) {
         std::cerr << "GGUFFile init failed" << std::endl;
         return -1;
     }
 
-    for (const KVPair& kv : gguf_file.header.metadata_kv) {
-        convert_metadata_value(kv.key.string, kv.value, metadata);
-    }
-
-    for (size_t i=0; i < gguf_file.tensor_infos.size(); ++i) {
-        const TensorInfo& info = gguf_file.tensor_infos[i];
-        auto tensor = std::make_shared<Tensor>();
-        tensor->name = info.name.string;
-
-        DataType dtype = tensor_to_data_type(info.type);
-        if (dtype == DataType::INVALID) {
-            // TO-DO: should probably clean up GGUF file here
-            std::cerr << "[Bad file] unsupported tensor type: " << tensor_type_to_str(info.type) << std::endl;
-            return -1;
-        }
-        tensor->dtype = dtype;
-        
-        if (info.dimensions.size() == 0 || info.dimensions.size() > 4) {
-            // TO-DO: should probably clean up GGUF file here
-            std::cerr << "[Bad file] tensor " << tensor->name << " has 0 or > 4 dimensions" << std::endl;
-            return -1;
+    try {
+        for (const KVPair& kv : gguf_file.header.metadata_kv) {
+            convert_metadata_value(kv.key.string, kv.value, metadata);
         }
 
-        size_t element_count = 1;
-        for (uint64_t dim : info.dimensions) { // uint64_t -> see GGUF spec
-            if (dim == 0) {
-                // TO-DO: should probably clean up GGUF file here
-                std::cerr << "[Bad file] tensor " << tensor->name << " has value 0 in one of the dimensions" << std::endl;
+        for (size_t i=0; i < gguf_file.tensor_infos.size(); ++i) {
+            const TensorInfo& info = gguf_file.tensor_infos[i];
+            auto tensor = std::make_shared<Tensor>();
+            tensor->name = info.name.string;
+
+            DataType dtype = tensor_to_data_type(info.type);
+            if (dtype == DataType::INVALID) {
+                std::cerr << "[Bad file] unsupported tensor type: " << tensor_type_to_str(info.type) << std::endl;
                 return -1;
             }
-            element_count *= dim;
-        }
-        tensor->size_bytes = element_count * dtype_size(tensor->dtype);
+            tensor->dtype = dtype;
+            
+            if (info.dimensions.size() == 0 || info.dimensions.size() > 4) {
+                std::cerr << "[Bad file] tensor " << tensor->name << " has 0 or > 4 dimensions" << std::endl;
+                return -1;
+            }
 
-        // GGUF dimensions vs actual logical layout: see discussion at https://github.com/ggml-org/llama.cpp/issues/6040
-        // thus we shape e.g. GGUF dimension [3,4,5] -> [1,5,4,3] our shape
-        tensor->shape.fill(1);
-        size_t start_idx = 4 - info.dimensions.size();
-        for (size_t j=0; j < info.dimensions.size(); ++j) {
-            tensor->shape[start_idx + j] = info.dimensions[info.dimensions.size() - 1 - j];
-        }
+            size_t element_count = 1;
+            for (uint64_t dim : info.dimensions) { // uint64_t -> see GGUF spec
+                if (dim == 0) {
+                    std::cerr << "[Bad file] tensor " << tensor->name << " has value 0 in one of the dimensions" << std::endl;
+                    return -1;
+                }
+                element_count = mul(element_count, static_cast<size_t>(dim));
+            }
+            tensor->size_bytes = mul(element_count, dtype_size(tensor->dtype));
 
-        if (info.offset + tensor->size_bytes > gguf_file.tensor_data_size) {
-            // TO-DO: should probably clean up GGUF file here
-            std::cerr << "[Bad file] tensor " << tensor->name << " extends beyond file bounds" << std::endl;
-            return -1;
-        }
+            // GGUF dimensions vs actual logical layout: see discussion at https://github.com/ggml-org/llama.cpp/issues/6040
+            // thus we shape e.g. GGUF dimension [3,4,5] -> [1,5,4,3] our shape
+            tensor->shape.fill(1);
+            size_t start_idx = 4 - info.dimensions.size();
+            for (size_t j=0; j < info.dimensions.size(); ++j) {
+                tensor->shape[start_idx + j] = info.dimensions[info.dimensions.size() - 1 - j];
+            }
 
-        tensor->data = gguf_file.tensor_data + info.offset;
-        tensor->device = Device::CPU;
-        tensors[tensor->name] = tensor;
-        
-        tensor_metadata[tensor->name] = tensor->to_json();
+            check(info.offset, gguf_file.tensor_data_size);
+            check(tensor->size_bytes, gguf_file.tensor_data_size - info.offset);
+
+            tensor->data = gguf_file.tensor_data + info.offset;
+            tensor->device = Device::CPU;
+            tensors[tensor->name] = tensor;
+            
+            tensor_metadata[tensor->name] = tensor->to_json();
+        }
+    } catch (std::exception& e) {
+        std::cerr << "[Parse error] " << e.what() << std::endl;
+        return -1;
     }
+    
     return 0;
 }
 
