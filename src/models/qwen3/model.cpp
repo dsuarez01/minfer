@@ -3,8 +3,8 @@
 #include "minfer/models/qwen3/module.hpp"
 #include "minfer/models/qwen3/tokenizer.hpp"
 
-Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
-    : BaseModel(model_data, run_params) {
+Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_params)
+    : BaseModel(model_file, run_params) {
     
     _gqas.reserve(config->n_layers);
     _moes.reserve(config->n_layers);
@@ -18,7 +18,7 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
         config->padding_token_id
     );
 
-    auto embed_weight = model_data.tensors.at("token_embd.weight");
+    auto embed_weight = model_data->tensors.at("token_embd.weight");
 
     _embed = std::make_shared<Qwen3Embed>(
         config->vocab_size, config->d_model, 
@@ -32,7 +32,7 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
     // each of n_layers decoder blocks are split into GQA and MoE
     for (int i = 0; i < config->n_layers; ++i) {
         std::string layer_prefix = "blk." + std::to_string(i) + ".";
-        auto dtype_device_gqa = model_data.tensors.at(layer_prefix + "attn_q.weight"); // this is usually quantized
+        auto dtype_device_gqa = model_data->tensors.at(layer_prefix + "attn_q.weight"); // this is usually quantized
         auto qdtype_gqa = dtype_device_gqa->dtype;
         auto device_gqa = dtype_device_gqa->device;
         auto gqa = std::make_shared<Qwen3GQA>(
@@ -40,13 +40,13 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
             config->d_model, config->user_max_seq_len,
             config->n_heads, config->n_kv_heads, config->d_head, config->d_rotary,
             config->rms_norm_eps, config->freq_base,
-            model_data.tensors.at(layer_prefix + "attn_q.weight"),
-            model_data.tensors.at(layer_prefix + "attn_k.weight"),
-            model_data.tensors.at(layer_prefix + "attn_v.weight"),
-            model_data.tensors.at(layer_prefix + "attn_output.weight"),
-            model_data.tensors.at(layer_prefix + "attn_q_norm.weight"),
-            model_data.tensors.at(layer_prefix + "attn_k_norm.weight"),
-            model_data.tensors.at(layer_prefix + "attn_norm.weight"), 
+            model_data->tensors.at(layer_prefix + "attn_q.weight"),
+            model_data->tensors.at(layer_prefix + "attn_k.weight"),
+            model_data->tensors.at(layer_prefix + "attn_v.weight"),
+            model_data->tensors.at(layer_prefix + "attn_output.weight"),
+            model_data->tensors.at(layer_prefix + "attn_q_norm.weight"),
+            model_data->tensors.at(layer_prefix + "attn_k_norm.weight"),
+            model_data->tensors.at(layer_prefix + "attn_norm.weight"), 
             qdtype_gqa,
             device_gqa
         );
@@ -65,20 +65,20 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
         layer_prefix + "ffn_up_exps.weight" : 
         layer_prefix + "ffn_up.weight";
 
-        auto dtype_device_moe = model_data.tensors.at(gate_key); // this is usually quantized
+        auto dtype_device_moe = model_data->tensors.at(gate_key); // this is usually quantized
         auto qdtype_moe = dtype_device_moe->dtype;
         auto device_moe =  dtype_device_moe->device;
         auto moe = std::make_shared<Qwen3MoE>(
             config->d_model, config->d_ff,
             config->n_experts, config->n_active_experts,
             config->rms_norm_eps,
-            model_data.tensors.at(layer_prefix + "ffn_norm.weight"),
+            model_data->tensors.at(layer_prefix + "ffn_norm.weight"),
             // router tensor (nullptr if not MoE)
-            config->n_experts>0 ? model_data.tensors.at(layer_prefix + "ffn_gate_inp.weight") : nullptr,
+            config->n_experts>0 ? model_data->tensors.at(layer_prefix + "ffn_gate_inp.weight") : nullptr,
             // gate, down, up tensors (name depends on if MoE)
-            model_data.tensors.at(gate_key),
-            model_data.tensors.at(down_key),
-            model_data.tensors.at(up_key),
+            model_data->tensors.at(gate_key),
+            model_data->tensors.at(down_key),
+            model_data->tensors.at(up_key),
             qdtype_moe,
             device_moe
         );
@@ -86,7 +86,7 @@ Qwen3Model::Qwen3Model(const ModelData& model_data, const RunParams& run_params)
         append_layer(moe);
     }
     
-    auto final_norm_weight = model_data.tensors.at("output_norm.weight");
+    auto final_norm_weight = model_data->tensors.at("output_norm.weight");
     _final_norm = std::make_shared<Qwen3FinalRMSNorm>(
         config->d_model, config->rms_norm_eps,
         final_norm_weight,

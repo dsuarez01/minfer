@@ -12,6 +12,6 @@ private:
     std::shared_ptr<Qwen3LMHead> _lm_head;
 
 public:
-    Qwen3Model(const ModelData& model_data, const RunParams& run_params);
+    Qwen3Model(const std::string& model_file, const RunParams& run_params);
     void forward(std::shared_ptr<RunState> run_state) override;
 };

@@ -2,8 +2,12 @@
 
 #include <iostream>
 
-BaseModel::BaseModel(const ModelData& model_data, const RunParams& run_params) {
-    config = std::make_shared<Config>(model_data, run_params);
+BaseModel::BaseModel(const std::string& model_file, const RunParams& run_params) {
+    model_data = std::make_unique<ModelData>();
+    if (model_data->from_file(model_file) != 0) {
+        throw std::runtime_error("Failed to load model file: " + model_file);
+    }
+    config = std::make_shared<Config>(*model_data, run_params);
     sampler = std::make_unique<Sampler>(config);
     run_state = std::make_shared<RunState>(config);
     stats = std::make_unique<GenStats>();

@@ -11,7 +11,6 @@ bool TestTokenizer::init_from_gguf(const std::string& gguf_path) {
         return false;
     }
     
-    // Extract tokenizer data from the parsed metadata
     try {
         auto tokens = model_data.metadata.at("tokenizer.ggml.tokens").get<std::vector<std::string>>();
         auto merges = model_data.metadata.at("tokenizer.ggml.merges").get<std::vector<std::string>>();
@@ -20,7 +19,6 @@ bool TestTokenizer::init_from_gguf(const std::string& gguf_path) {
         auto eos_id = model_data.metadata.at("tokenizer.ggml.eos_token_id").get<uint32_t>();
         auto pad_id = model_data.metadata.at("tokenizer.ggml.padding_token_id").get<uint32_t>();
         
-        // Create the tokenizer
         tokenizer = std::make_unique<Qwen3Tokenizer>(
             tokens, merges, token_types, chat_template, eos_id, pad_id
         );

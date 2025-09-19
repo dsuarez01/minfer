@@ -81,15 +81,8 @@ int main(int argc, char* argv[]) {
     std::cout << "Max seq. length: " << max_seq_len << "\n";
     std::cout << "Seed: " << seed << "\n";
     
-    ModelData model_data;
-    int result = model_data.from_file(filepath);
-    if (result != 0) {
-        std::cerr << "Failed to load model data" << std::endl;
-        return -1;
-    }
-    
     RunParams run_params(num_iters, max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, seed);
-    Qwen3Model test(model_data, run_params);
+    Qwen3Model test(filepath, run_params);
     test.benchmark();
 
     return 0;
