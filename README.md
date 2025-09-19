@@ -3,7 +3,6 @@
 Currently, this project supports non-sharded Qwen3 GGUF model files — note the tokenizer data must be present and is assumed to be shipped with the "data gym" style byte mapping used by GPT-2 and other BPE tokenizers, where non-printable bytes are mapped to specific Unicode codepoints. Learn more about this by referencing the GGUF tokenizer implementation at [Llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/README.md).
 
 External dependencies:
-- [UTF8CPP](https://github.com/nemtrif/utfcpp)
 - [PCRE2](https://github.com/PCRE2Project/pcre2)
 - [Minja](https://github.com/google/minja)
 

@@ -1,10 +1,8 @@
 #include "minfer/models/qwen3/tokenizer.hpp"
-
 #include "extern/nlohmann/json.hpp"
-#include "extern/utf8.h"
-
 #include <algorithm>
 #include <chrono>
+#include <cassert>
 
 using ordered_json = nlohmann::ordered_json;
 
@@ -15,17 +13,22 @@ Qwen3Tokenizer::Qwen3Tokenizer(
     const std::string& chat_template,
     uint32_t eos_id,
     uint32_t pad_id
-) : _token_types(token_types), BaseTokenizer(eos_id, pad_id) {
-    
-    init_vocab(tokens);
-    init_merge_rules(merges);
-    compile_regex_pattern(); // TO-DO: return this instead of storing internally?
-
-    pcre2_match_data* raw_match_data = pcre2_match_data_create_from_pattern(_compiled_pattern.get(), nullptr);
-    if (!raw_match_data) {
-        assert(false && "Tokenizer: failed to create match data");
+) : _token_types(token_types),
+    BaseTokenizer(eos_id, pad_id),
+    _vocab(process_vocab(tokens, token_types)),
+    _special_tokens(extract_special_tokens(_vocab, token_types)),
+    _vocab_to_id(build_vocab_map(_vocab)),
+    _merge_rules(process_merge_rules(merges)),
+    _compiled_pattern(compile_regex_pattern()),
+    _match_data(create_match_data(_compiled_pattern.get()))
+{
+    if (tokens.size() != token_types.size()) { // tokens and token_types should always be same length
+        throw std::invalid_argument("Token and token_type arrays must have same size");
     }
-    _match_data.reset(raw_match_data);
+    
+    assert(_vocab.size() == _token_types.size());
+    assert(_compiled_pattern != nullptr);
+    assert(_match_data != nullptr);
     
     _chat_template = std::make_unique<minja::chat_template>(
         chat_template,
@@ -40,10 +43,10 @@ std::vector<uint32_t> Qwen3Tokenizer::encode(const std::string& text) {
     std::vector<uint32_t> result;
     auto matches = regex_split(text);
     
+    // each special token is in _vocab_to_id
     for (const auto& match : matches) {
         if (_special_tokens.count(match)) {
-            auto it = _vocab_to_id.find(match);
-            result.push_back(it != _vocab_to_id.end() ? it->second : 0);
+            result.push_back(_vocab_to_id.at(match));
         } else {
             auto tokens = bpe_encode(match);
             result.insert(result.end(), tokens.begin(), tokens.end());
@@ -54,111 +57,93 @@ std::vector<uint32_t> Qwen3Tokenizer::encode(const std::string& text) {
 }
 
 std::string Qwen3Tokenizer::decode_token(uint32_t token_id) {
-    if (token_id >= _vocab.size()) return "";
+    if (token_id >= _vocab.size()) {
+        throw std::out_of_range("Token ID exceeds vocab size");
+    }
     
-    // fallback: skip unused tokens
     if (_token_types[token_id] == UNUSED_TOKEN) {
-        return "";
+        return "<UNK>";
     }
 
     return _vocab[token_id];
 }
 
 std::string Qwen3Tokenizer::decode(const std::vector<uint32_t>& tokens) {
+    if (tokens.empty()) return "";
+    
     std::string result;
     result.reserve(tokens.size() * 4);
     
     for (uint32_t token_id : tokens) {
-        if (token_id < _vocab.size() && _token_types[token_id] != UNUSED_TOKEN) {
-            result += _vocab[token_id];
-        }
+        result += decode_token(token_id);
     }
 
     return result;
 }
 
-// process vocab, undo "data gym" mapping via codepoints
-void Qwen3Tokenizer::init_vocab(const std::vector<std::string>& tokens) {
-    _vocab.reserve(tokens.size());
-    
-    for (size_t i = 0; i < tokens.size(); ++i) {
-        uint32_t token_type = _token_types[i];
-        
-        std::string processed_token;
-        if (token_type == CONTROL_TOKEN || token_type == USER_DEFINED_TOKEN || token_type == UNUSED_TOKEN) {
-            processed_token = tokens[i];
-            if (token_type == CONTROL_TOKEN || token_type == USER_DEFINED_TOKEN) {
-                _special_tokens.insert(tokens[i]);
-            }
-        } else {
-            processed_token = decode_token_bytes(tokens[i]); // convert regular and byte tokens
-        }
-        
-        _vocab.push_back(processed_token);
-        _vocab_to_id[processed_token] = i;
+std::vector<std::string> Qwen3Tokenizer::process_vocab(
+    const std::vector<std::string>& tokens, 
+    const std::vector<uint32_t>& token_types
+) {
+    if (tokens.size() != token_types.size()) {
+        throw std::invalid_argument("Token and token_type arrays must have equal length");
     }
+
+    return tokens;
 }
 
-// preprocess merge rules into vector of MergeRule structs
-// undo "data gym" mapping of l,r bytes via codepoints
-void Qwen3Tokenizer::init_merge_rules(const std::vector<std::string>& merges) {
-    _merge_rules.reserve(merges.size());
+std::unordered_set<std::string> Qwen3Tokenizer::extract_special_tokens(
+    const std::vector<std::string>& vocab,
+    const std::vector<uint32_t>& token_types
+) {
+    std::unordered_set<std::string> special_tokens;
+    
+    for (size_t i=0; i<vocab.size(); ++i) {
+        uint32_t token_type = token_types[i];
+        if (token_type == CONTROL_TOKEN || token_type == USER_DEFINED_TOKEN) {
+            special_tokens.insert(vocab[i]);
+        }
+    }
+    
+    return special_tokens;
+}
+
+std::unordered_map<std::string, uint32_t> Qwen3Tokenizer::build_vocab_map(
+    const std::vector<std::string>& vocab
+) {
+    std::unordered_map<std::string, uint32_t> vocab_to_id;
+    vocab_to_id.reserve(vocab.size());
+    
+    for (size_t i = 0; i < vocab.size(); ++i) {
+        vocab_to_id[vocab[i]] = static_cast<uint32_t>(i);
+    }
+    
+    return vocab_to_id;
+}
+
+std::vector<Qwen3Tokenizer::MergeRule> Qwen3Tokenizer::process_merge_rules(
+    const std::vector<std::string>& merges
+) {
+    std::vector<MergeRule> merge_rules;
+    merge_rules.reserve(merges.size());
     
     for (const auto& merge_rule : merges) {
         size_t space_pos = merge_rule.find(' ');
-        if (space_pos == std::string::npos) continue;
+        if (space_pos == std::string::npos) {
+            throw std::invalid_argument("Invalid merge rule format: " + merge_rule);
+        }
         
         std::string left = merge_rule.substr(0, space_pos);
         std::string right = merge_rule.substr(space_pos + 1);
+        std::string merged = left + right;
         
-        std::string left_decoded = decode_token_bytes(left);
-        std::string right_decoded = decode_token_bytes(right);
-        std::string merged = left_decoded + right_decoded;
-        
-        _merge_rules.push_back({left_decoded, right_decoded, merged});
-    }
-}
-
-// does actual decoding, see llama.cpp repo for more info
-std::string Qwen3Tokenizer::decode_token_bytes(const std::string& token) {
-    if (token.empty()) return token;
-    
-    std::vector<uint32_t> codepoints;
-    utf8::utf8to32(token.begin(), token.end(), std::back_inserter(codepoints));
-    
-    std::string result;
-    for (uint32_t codep : codepoints) {
-        // codepoint = byte value
-        if ((codep >= 33 && codep <= 126) ||      // ASCII printable
-            (codep >= 161 && codep <= 172) ||     // Latin-1 Â¡ to Â¬
-            (codep >= 174 && codep <= 255)) {     // Latin-1 Â® to Ã¿
-            result += static_cast<unsigned char>(codep);
-        }
-        // map codeps back to orig bytes
-        else if (codep >= 256) {
-            int offset = codep - 256;
-            unsigned char original_byte;
-            if (offset <= 32) {
-                original_byte = offset; // bytes 0-32
-            } else if (offset <= 66) {
-                original_byte = 127 + (offset - 33); // bytes 127-160
-            } else {
-                original_byte = 173; // byte 173
-            }
-            result += original_byte;
-        }
-        // fallback, convert back to UTF-8
-        else {
-            std::string utf8_char;
-            utf8::utf32to8(&codep, &codep + 1, std::back_inserter(utf8_char));
-            result += utf8_char;
-        }
+        merge_rules.push_back({left, right, merged});
     }
     
-    return result;
+    return merge_rules;
 }
 
-void Qwen3Tokenizer::compile_regex_pattern() {
+std::unique_ptr<pcre2_code, Qwen3Tokenizer::PCRE2Deleter> Qwen3Tokenizer::compile_regex_pattern() {
     // tiktoken (cl100k_base): https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
     std::string base_pattern = R"('(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+|\s++$|\s*[\r\n]|\s+(?!\S)|\s)";
     
@@ -177,20 +162,33 @@ void Qwen3Tokenizer::compile_regex_pattern() {
     if (!raw_pattern) {
         PCRE2_UCHAR buffer[256];
         pcre2_get_error_message(error_code, buffer, sizeof(buffer));
-        assert(false && "Tokenizer: regex pattern failed to compile.");
+        throw std::runtime_error("Failed to compile tokenizer regex pattern: " + 
+                                std::string(reinterpret_cast<char*>(buffer)));
     }
     
-    _compiled_pattern.reset(raw_pattern);
+    return std::unique_ptr<pcre2_code, PCRE2Deleter>(raw_pattern);
 }
 
-// see PCRE2 documentation, yes i know it's not ideal
+std::unique_ptr<pcre2_match_data, Qwen3Tokenizer::PCRE2MatchDataDeleter> 
+Qwen3Tokenizer::create_match_data(pcre2_code* pattern) {
+    pcre2_match_data* raw_match_data = pcre2_match_data_create_from_pattern(pattern, nullptr);
+    if (!raw_match_data) {
+        throw std::runtime_error("Failed to create PCRE2 match data");
+    }
+    
+    return std::unique_ptr<pcre2_match_data, PCRE2MatchDataDeleter>(raw_match_data);
+}
+
 std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
+    assert(_compiled_pattern != nullptr);
+    assert(_match_data != nullptr);
+    
     std::vector<std::string> matches;
     matches.reserve(text.length() / 10);
     
     size_t pos = 0;
     while (pos < text.length()) {
-        // finding next special token from cur pos
+        // find next special token from cur pos
         size_t next_special = text.length();
         size_t special_len = 0;
         for (const auto& special : _special_tokens) {
@@ -208,7 +206,7 @@ std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
             continue;
         }
         
-        // otherwise, try regex match only up to next special token
+        // otherwise, try regex match, but only up to next special token
         int result = pcre2_match(
             _compiled_pattern.get(),
             reinterpret_cast<PCRE2_SPTR>(text.c_str()),
@@ -219,6 +217,7 @@ std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
             nullptr
         );
         
+        // fallback if no match, just append from text at cur pos
         if (result < 0) {
             matches.push_back(std::string(1, text[pos]));
             pos++;
@@ -235,7 +234,7 @@ std::vector<std::string> Qwen3Tokenizer::regex_split(const std::string& text) {
 std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
     if (token.empty()) return {};
     
-    // BPE: start with individual bytes as strings
+    // start with bytes as strs
     std::vector<std::string> word;
     word.reserve(token.size());
     for (unsigned char byte : token) {
@@ -247,53 +246,82 @@ std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
         result.reserve(word.size());
         for (const auto& w : word) {
             auto it = _vocab_to_id.find(w);
-            result.push_back(it != _vocab_to_id.end() ? it->second : 0); // 0 as fallback
+            if (it == _vocab_to_id.end()) {
+                std::cout << "Missing BPE token: '";
+                for (unsigned char c : w) {
+                    std::cout << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+                }
+                std::cout << "' (displayed as: '" << w << "')" << std::endl;
+                
+                // Check if space exists anywhere in vocab map
+                auto space_it = _vocab_to_id.find(" ");
+                if (space_it != _vocab_to_id.end()) {
+                    std::cout << "Space found at token ID: " << space_it->second << std::endl;
+                } else {
+                    std::cout << "Space not found in vocab map at all!" << std::endl;
+                }
+                
+                throw std::runtime_error("Byte token '" + w + "' not found in vocab to id map");
+            }
+            result.push_back(it->second);
         }
         return result;
     }
     
-    // apply merge rules in order
+    // merge rules applied in order
     for (const auto& rule : _merge_rules) {
         if (word.size() <= 1) break;
-        
         
         bool found_merge = false;
         std::vector<std::string> new_word;
         
-        // does rule apply to word anywhere
         for (size_t i = 0; i < word.size(); ++i) {
             if (i < word.size() - 1 && word[i] == rule.left && word[i+1] == rule.right) {
-                if (!found_merge) { // first merge
+                if (!found_merge) {
                     new_word.reserve(word.size());
-                    // copy everything we've seen so far
                     new_word.insert(new_word.end(), word.begin(), word.begin() + i);
                     found_merge = true;
                 }
                 new_word.push_back(rule.merged);
                 ++i; // skip next token
-            } else if (found_merge) { // second+ merge
+            } else if (found_merge) {
                 new_word.push_back(word[i]);
             }
         }
         
-        if (found_merge) { // replace word with new word if merge found
+        if (found_merge) {
             word = std::move(new_word);
         }
     }
     
-    // convert (possibly) merged word to token IDs
+    // merged word -> token IDs
     std::vector<uint32_t> result;
     result.reserve(word.size());
     for (const auto& w : word) {
         auto it = _vocab_to_id.find(w);
-        result.push_back(it != _vocab_to_id.end() ? it->second : 0); // 0 as fallback
+        if (it == _vocab_to_id.end()) {
+            std::cout << "Missing BPE token: '";
+            for (unsigned char c : w) {
+                std::cout << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+            }
+            std::cout << "' (displayed as: '" << w << "')" << std::endl;
+            
+            // Check if space exists anywhere in vocab map
+            auto space_it = _vocab_to_id.find(" ");
+            if (space_it != _vocab_to_id.end()) {
+                std::cout << "Space found at token ID: " << space_it->second << std::endl;
+            } else {
+                std::cout << "Space not found in vocab map at all!" << std::endl;
+            }
+            
+            throw std::runtime_error("BPE token '" + w + "' not found in vocab to id map");
+        }
+        result.push_back(it->second);
     }
     
     return result;
 }
 
-// applies chat template using Minja, see documentation for more info
-// https://github.com/google/minja
 std::string Qwen3Tokenizer::apply_chat_template(
     const std::vector<Message>& messages,
     const std::vector<Tool>& tools,
@@ -331,23 +359,11 @@ std::string Qwen3Tokenizer::apply_chat_template(
         tools_json.push_back(tool_json);
     }
     
-    try {
-        minja::chat_template_inputs inputs;
-        inputs.messages = messages_json;
-        inputs.tools = tools_json;
-        inputs.add_generation_prompt = add_generation_prompt;
-        inputs.extra_context = ordered_json{};
-        inputs.now = std::chrono::system_clock::now();
-        return _chat_template->apply(inputs, {});
-    } catch (const std::exception& e) {
-        // fallback to a simple template
-        std::string result;
-        for (const auto& msg : messages) {
-            result += "<|im_start|>" + msg.role + "\n" + msg.content + "<|im_end|>\n";
-        }
-        if (add_generation_prompt) {
-            result += "<|im_start|>assistant\n";
-        }
-        return result;
-    }
+    minja::chat_template_inputs inputs;
+    inputs.messages = messages_json;
+    inputs.tools = tools_json;
+    inputs.add_generation_prompt = add_generation_prompt;
+    inputs.extra_context = ordered_json{};
+    inputs.now = std::chrono::system_clock::now();
+    return _chat_template->apply(inputs, {});
 }
