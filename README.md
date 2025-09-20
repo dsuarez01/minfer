@@ -23,7 +23,7 @@ cd minfer
 git submodule update --init --recursive
 
 # Build
-cmake -S . -B build # -DCMAKE_BUILD_TYPE is Release by default, pass in Debug if needed
+cmake -S . -B build # NOTE: -DCMAKE_BUILD_TYPE is Release by default, pass in Debug if needed
 cmake --build build --parallel
 
 (include more usage instructions below)

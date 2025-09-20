@@ -1,4 +1,4 @@
-#include "tokenizer/test_tokenizer.hpp"
+#include "qwen3/tokenizer/tokenizer.hpp"
 #include <iostream>
 
 int main(int argc, char** argv) {

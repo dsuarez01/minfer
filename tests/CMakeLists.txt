@@ -13,14 +13,6 @@ add_executable(test_ops
 
 target_include_directories(test_ops PRIVATE include)
 target_link_libraries(test_ops minfer pthread)
-
-add_executable(test_tokenizer
-   test_tokenizer.cpp
-   src/base/test_base.cpp
-   src/tokenizer/test_tokenizer.cpp
-)
-
-target_include_directories(test_tokenizer PRIVATE include)
-target_link_libraries(test_tokenizer minfer pthread)
 apply_arch_flags(test_ops)
-apply_arch_flags(test_tokenizer)
+
+add_subdirectory(qwen3)
