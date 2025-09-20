@@ -8,7 +8,7 @@
 #include <cstdlib>
 
 void print_usage(const char* program_name) {
-    std::cout << "Usage: " << program_name << " <model_path> [OPTIONS]\n\n";
+    std::cout << "Usage: " << program_name << " [-h] <model_path> [OPTIONS]\n\n";
     std::cout << "Required arguments:\n";
     std::cout << "  <model_path>           Path to model file\n";
     std::cout << "  -p, --prompt <text>    Input prompt text\n";
