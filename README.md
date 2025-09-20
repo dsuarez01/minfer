@@ -1,4 +1,4 @@
-### Minfer: minimal inference engine running on Apple M-series chips
+### Minfer: Minimal inference engine running on Apple M-series chips
 
 Currently, this project supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
 
