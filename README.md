@@ -1,3 +1,5 @@
+### Minfer: minimal inference engine running on Apple M-series chips
+
 Currently, this project supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
 
 ### Precision Support
@@ -87,5 +89,7 @@ Most of the speed gain here comes from (1) taking advantage of SIMD on FP32, FP1
 Other processors will see faster CPU-only inference performance, due to support for wider SIMD registers (e.g. AVX2 w/ 512-bit). Other alternatives to better utilize processor performance include [AMX](https://zhen8838.github.io/2024/04/23/mac-amx_en) and the Accelerate framework offering built-in GEMV and GEMM operations... But the former is horribly undocumented, while the latter seems to defeat the purpose of an educational implementation. (I have plans to come back to AMX eventually.)
 
 Another tool I found to be useful in profiling CPU activity is [Instruments](https://en.wikipedia.org/wiki/Instruments_(software)), a tool (bundled with XCode 3.0+) that allows you to run compiled binaries as shown below:
+
+<img width="1370" height="792" alt="profiling" src="https://github.com/user-attachments/assets/1141acbe-dff1-41cd-b413-88936af423dd" />
 
 GPU support via MSL is being implemented next. I suspect that we should be able to support larger models, the constraint being that the model must fit in VRAM. At some point, I will consider how to implement support for other ISAs and CUDA (the focus here is to get the implementation running on my own laptop first).
