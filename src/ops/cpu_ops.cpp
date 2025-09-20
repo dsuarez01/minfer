@@ -33,6 +33,28 @@ namespace cpu {
         }
     }
 
+    // overloaded: uncached vs cached
+    void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
+        int d_rotary, float freq_base, int pos) {
+        for (int i=0; i<d_flat; i+=2) {
+            float x_0 = x_in[i];
+            float x_1 = x_in[i+1];
+
+            int ii = i % d_head;
+            float freq = ii >= d_rotary ? 0.0f : 1.0f / std::powf(freq_base, (1.0f * ii) / d_rotary);
+            float angle = pos*freq;
+            
+            float cos_angle = std::cosf(angle);
+            float sine_angle = std::sinf(angle);
+
+            float new_x_0 = cos_angle*x_0 - sine_angle*x_1;
+            float new_x_1 = sine_angle*x_0 + cos_angle*x_1;
+            
+            x_out[i] = new_x_0;
+            x_out[i+1] = new_x_1;
+        }
+    }
+
     void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
         int d_rotary, float freq_base, int pos, std::vector<float>& rope_table) {
         for (int i=0; i<d_flat; i+=2) {
@@ -40,11 +62,6 @@ namespace cpu {
             float x_1 = x_in[i+1];
 
             int ii = i % d_head;
-            // float freq = ii >= d_rotary ? 0.0f : 1.0f / std::powf(freq_base, (float) ii/ (float) d_rotary);
-            // float angle = pos*freq;
-            
-            // float c_angle = std::cosf(angle);
-            // float s_angle = std::sinf(angle);
 
             float cos_angle = ii >= d_rotary ? 1.0f : rope_table[pos*d_rotary + 2*ii];
             float sine_angle = ii >= d_rotary ? 0.0f : rope_table[pos*d_rotary + 2*ii+1];
@@ -57,6 +74,29 @@ namespace cpu {
         }
     }
 
+    // overloaded: uncached vs cached
+    void neox_rope(
+        float* x_out, const float* x_in, int d_flat, int d_head, 
+        int d_rotary, float freq_base, int pos
+    ) {
+        for (int i=0; i<d_flat; ) {
+            int i_0 = i%d_head;
+            int i_1 = i_0 < d_rotary/2 ? i_0 + d_rotary/2 : i_0;
+            float x_0 = x_in[i_0 + (i/d_head)*d_head];
+            float x_1 = x_in[i_1 + (i/d_head)*d_head]; 
+
+            float freq = i_0 < d_rotary / 2 ? 1.0f / std::powf(freq_base, 2.0f * i_0 / d_rotary) : 0.0f;
+            float angle = pos * freq;
+
+            float cos_angle = std::cosf(angle);
+            float sine_angle = std::sinf(angle);
+
+            x_out[i_0 + (i/d_head)*d_head] = cos_angle * x_0 - sine_angle * x_1;
+            x_out[i_1 + (i/d_head)*d_head] = sine_angle * x_0 + cos_angle * x_1;
+            i += ((i+1)%d_head == d_rotary/2) ? d_rotary/2 + 1 : 1;
+        }
+    }
+
     void neox_rope(
         float* x_out, const float* x_in, int d_flat, int d_head, 
         int d_rotary, float freq_base, int pos, std::vector<float>& rope_table
@@ -64,16 +104,14 @@ namespace cpu {
         for (int i=0; i<d_flat; ) {
             int i_0 = i%d_head;
             int i_1 = i_0 < d_rotary/2 ? i_0 + d_rotary/2 : i_0;
-            float x_0 = x_in[i_0 + (i / d_head) * d_head];
-            float x_1 = x_in[i_1 + (i / d_head) * d_head]; 
+            float x_0 = x_in[i_0 + (i/d_head)*d_head];
+            float x_1 = x_in[i_1 + (i/d_head)*d_head]; 
 
-            // float freq = i_0 < d_rotary / 2 ? 1.0f / std::powf(freq_base, 2.0f * i_0 / d_rotary) : 0.0f;
-            // float angle = pos * freq;
             float cos_angle = i_0 >= d_rotary / 2 ? 1.0f : rope_table[pos*d_rotary + 2*i_0];
             float sine_angle = i_0 >= d_rotary / 2 ? 0.0f : rope_table[pos*d_rotary + 2*i_0+1];
 
-            x_out[i_0 + (i / d_head) * d_head] = cos_angle * x_0 - sine_angle * x_1;
-            x_out[i_1 + (i / d_head) * d_head] = sine_angle * x_0 + cos_angle * x_1;
+            x_out[i_0 + (i/d_head)*d_head] = cos_angle * x_0 - sine_angle * x_1;
+            x_out[i_1 + (i/d_head)*d_head] = sine_angle * x_0 + cos_angle * x_1;
             i += ((i+1)%d_head == d_rotary/2) ? d_rotary/2 + 1 : 1;
         }
     }
@@ -175,7 +213,7 @@ namespace cpu {
         
         const int TILE_SIZE=16; // needs to be a multiple of 16 (4 Neon pipelines)
 
-        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+        assert((d_in % TILE_SIZE == 0) && "d_in should be divisible by the tile size");
 
         #pragma omp parallel for
         for (int i=0; i<d_out; i+=TILE_SIZE) {
@@ -208,7 +246,7 @@ namespace cpu {
     void matmul<fp16_t, fp16_tag>(float* x_out, const float* x_in, const fp16_t* weight, int d_out, int d_in) {
         const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon pipelines)
         
-        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+        assert((d_in % TILE_SIZE == 0) && "d_in should be divisible by the tile size");
 
         #pragma omp parallel for
         for (int i=0; i<d_out; i+=TILE_SIZE) {
@@ -254,7 +292,7 @@ namespace cpu {
     void matmul<bf16_t, bf16_tag>(float* x_out, const float* x_in, const bf16_t* weight, int d_out, int d_in) {
         const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon pipelines)
         
-        assert((d_in % TILE_SIZE == 0) && "d_in should both be divisible by the tile size");
+        assert((d_in % TILE_SIZE == 0) && "d_in should be divisible by the tile size");
 
         #pragma omp parallel for
         for (int i=0; i<d_out; i+=TILE_SIZE) {

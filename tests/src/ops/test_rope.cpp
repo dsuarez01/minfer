@@ -5,23 +5,7 @@
 
 TestRope::TestRope(const std::string& name) : TestBase(name) {}
 
-namespace {
-    // Anonymous helper function to create rope table
-    std::vector<float> create_rope_table(size_t max_seq_len, int d_rotary, float freq_base) {
-        std::vector<float> table(max_seq_len * d_rotary);
-        
-        for (size_t pos=0; pos<max_seq_len; ++pos) {
-            for (int i=0; i<d_rotary/2; ++i) {
-                float freq = 1.0f / std::powf(freq_base, 2.0f * i/d_rotary);
-                table[pos*d_rotary+ 2*i] = std::cosf(pos*freq);
-                table[pos*d_rotary + 2*i+1] = std::sinf(pos*freq);
-            }
-        }
-        return table;
-    }
-}
-
-void TestRope::test_zero_position() {
+void TestRope::test_il_rope_zero_position() {
     float input[4] = {1.0f, 2.0f, 3.0f, 4.0f};
     float output[4] = {0.0f};
     int d_flat = 4;
@@ -30,16 +14,15 @@ void TestRope::test_zero_position() {
     float freq_base = 10000.0f;
     int pos = 0;
     
-    auto rope_table = create_rope_table(10, d_rotary, freq_base);  // max_seq_len=10 for test
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos, rope_table);
+    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
-    // position=0 implies angle=0. cos(0)=1, sin(0)=0
-    // output=input
+    // at pos 0, all angles are 0: cos(0)=1, sin(0)=0
+    // output = input here
     float expected[4] = {1.0f, 2.0f, 3.0f, 4.0f};
-    assert_arrays_equal(expected, output, d_flat, 1e-6f, "RoPE at pos. 0");
+    assert_arrays_equal(expected, output, d_flat, 1e-6f, "IL RoPE at pos 0");
 }
 
-void TestRope::test_single_head() {
+void TestRope::test_il_rope_single_head() {
     float input[4] = {1.0f, 0.0f, 0.0f, 1.0f};
     float output[4] = {0.0f};
     int d_flat = 4;
@@ -48,102 +31,151 @@ void TestRope::test_single_head() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    auto rope_table = create_rope_table(10, d_rotary, freq_base);
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos, rope_table);
+    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
-    // pair (0,2): 
-    // freq=10000^(-2*0/4)=1, angle=1*1=1
-    // output[0]=cos(1)*1-sin(1)*0=cos(1)
-    // output[2]=sin(1)*1+cos(1)*0=sin(1)
+    // Pair (0,1): freq = 1/10000^(0/4) = 1, angle = 1*1 = 1
+    // output[0] = cos(1)*1 - sin(1)*0 = cos(1)
+    // output[1] = sin(1)*1 + cos(1)*0 = sin(1)
     
-    // pair (1,3): 
-    // freq=10000^(-2*1/4)=0.01, angle=0.01*1=0.01
-    // output[1]=cos(0.01)*0-sin(0.01)*1=-sin(0.01)
-    // output[3]=sin(0.01)*0+cos(0.01)*1=cos(0.01)
+    // Pair (2,3): freq = 1/10000^(2/4) = 1/100, angle = 1/100
+    // output[2] = cos(0.01)*0 - sin(0.01)*1 = -sin(0.01)
+    // output[3] = sin(0.01)*0 + cos(0.01)*1 = cos(0.01)
+    
+    float expected[4] = {std::cos(1.0f), std::sin(1.0f), -std::sin(0.01f), std::cos(0.01f)};
+    assert_arrays_equal(expected, output, d_flat, 1e-6f, "IL RoPE single head");
+}
 
+void TestRope::test_il_rope_partial_rotary() {
+    float input[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    float output[6] = {0.0f};
+    int d_flat = 6;
+    int d_head = 6;
+    int d_rotary = 4; // first 4 dims get rotated
+    float freq_base = 10000.0f;
+    int pos = 1;
+    
+    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    
+    // first 4 dims rotated
+    assert_true(output[0] != 1.0f || output[1] != 1.0f, "First pair rotated");
+    assert_true(output[2] != 1.0f || output[3] != 1.0f, "Second pair rotated");
+    
+    // last 2 dims unchanged
+    assert_equal(input[4], output[4], 1e-6f, "Dim 4 unchanged");
+    assert_equal(input[5], output[5], 1e-6f, "Dim 5 unchanged");
+}
+
+void TestRope::test_neox_rope_zero_position() {
+    float input[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float output[4] = {0.0f};
+    int d_flat = 4;
+    int d_head = 4;
+    int d_rotary = 4;
+    float freq_base = 10000.0f;
+    int pos = 0;
+    
+    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    
+    // at pos 0, all angles are 0
+    // output = input
+    float expected[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    assert_arrays_equal(expected, output, d_flat, 1e-6f, "NeoX RoPE at pos 0");
+}
+
+void TestRope::test_neox_rope_single_head() {
+    float input[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+    float output[4] = {0.0f};
+    int d_flat = 4;
+    int d_head = 4;
+    int d_rotary = 4;
+    float freq_base = 10000.0f;
+    int pos = 1;
+    
+    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    
+    // Pair (0,2): i_0=0, freq = 1/10000^(2*0/4) = 1, angle = 1
+    // output[0] = cos(1)*1 - sin(1)*0 = cos(1)
+    // output[2] = sin(1)*1 + cos(1)*0 = sin(1)
+    
+    // Pair (1,3): i_0=1, freq = 1/10000^(2*1/4) = 0.01, angle = 0.01
+    // output[1] = cos(0.01)*0 - sin(0.01)*1 = -sin(0.01)
+    // output[3] = sin(0.01)*0 + cos(0.01)*1 = cos(0.01)
+    
     float expected[4] = {std::cos(1.0f), -std::sin(0.01f), std::sin(1.0f), std::cos(0.01f)};
-    assert_arrays_equal(expected, output, d_flat, 1e-6f, "RoPE single head");
+    assert_arrays_equal(expected, output, d_flat, 1e-6f, "NeoX RoPE single head");
+}
+
+void TestRope::test_neox_rope_partial_rotary() {
+    float input[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    float output[6] = {0.0f};
+    int d_flat = 6;
+    int d_head = 6;
+    int d_rotary = 4; // only first d_rotary/2 = 2 pairs rotated
+    float freq_base = 10000.0f;
+    int pos = 1;
+    
+    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    
+    // first d_rotary/2 = 4/2 = 2 pairs are rotated
+    assert_true(output[0] != 1.0f || output[2] != 1.0f, "Pair (0,2) rotated");
+    assert_true(output[1] != 1.0f || output[3] != 1.0f, "Pair (1,3) rotated");
+    
+    // dims 4,5 unchanged
+    assert_equal(input[4], output[4], 1e-6f, "Dim 4 unchanged");
+    assert_equal(input[5], output[5], 1e-6f, "Dim 5 unchanged");
+}
+
+void TestRope::test_in_place_operation() {
+    float data[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float expected[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    int d_flat = 4;
+    int d_head = 4;
+    int d_rotary = 4;
+    float freq_base = 10000.0f;
+    int pos = 0;
+    
+    // test IL RoPE in-place at pos=0 (should be identity)
+    cpu::il_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
+    assert_arrays_equal(expected, data, d_flat, 1e-6f, "IL RoPE in-place at pos 0");
+    
+    // reset, test NeoX RoPE in-place at pos=0
+    for (int i=0; i<4; i++) data[i] = expected[i];
+    cpu::neox_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
+    assert_arrays_equal(expected, data, d_flat, 1e-6f, "NeoX RoPE in-place at pos 0");
 }
 
 void TestRope::test_multiple_heads() {
     float input[8] = {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f};
-    float output[8] = {0.0f};
+    float il_output[8] = {0.0f};
+    float neox_output[8] = {0.0f};
     int d_flat = 8;
     int d_head = 4; // 2 heads, 4 dims each
     int d_rotary = 4;
     float freq_base = 10000.0f;
     int pos = 1;
     
-    auto rope_table = create_rope_table(10, d_rotary, freq_base);
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos, rope_table);
+    cpu::il_rope(il_output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    cpu::neox_rope(neox_output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
-    // Each head rotated same way since d_rotary=d_head
-    // Head 0: idxs 0-3, Head 1: idxs 4-7
-    
-    assert_true(std::abs(output[0] - output[4]/2.0f) < 1e-6f, "Consistent rotation across heads (idx 0,4)");
-    assert_true(std::abs(output[1] - output[5]/2.0f) < 1e-6f, "Consistent rotation across heads (idx 1,5)");
-    assert_true(std::abs(output[2] - output[6]/2.0f) < 1e-6f, "Consistent rotation across heads (idx 2,6)");
-    assert_true(std::abs(output[3] - output[7]/2.0f) < 1e-6f, "Consistent rotation across heads (idx 3,7)");
-}
-
-void TestRope::test_partial_rotary() {
-    float input[12] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
-    float output[12] = {0.0f};
-    int d_flat = 12; // 2 heads
-    int d_head = 6;
-    int d_rotary = 4; // just first 4 dims get rotated per head
-    float freq_base = 10000.0f;
-    int pos = 1;
-    
-    auto rope_table = create_rope_table(10, d_rotary, freq_base);
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos, rope_table);
-    
-    // first 4 dims of first head rotated
-    assert_true(output[0] != input[0] || output[2] != input[2], "First pair of 1st head rotated");
-    assert_true(output[1] != input[1] || output[3] != input[3], "Second pair of 1st head rotated");
-    
-    // last 2 dims of first head unchanged
-    assert_equal(input[4], output[4], 1e-6f, "Dim. 4 (1st head) unchanged");
-    assert_equal(input[5], output[5], 1e-6f, "Dim. 5 (1st head) unchanged");
-
-    // first 4 dims of second head rotated
-    assert_true(output[6] != input[6] || output[8] != input[8], "First pair of 2nd head rotated");
-    assert_true(output[7] != input[7] || output[9] != input[9], "Second pair of 2nd head rotated");
-    
-    // last 2 dims of second head unchanged
-    assert_equal(input[10], output[10], 1e-6f, "Dim. 10 (2nd head) unchanged");
-    assert_equal(input[11], output[11], 1e-6f, "Dim. 11 (2nd head) unchanged");
-    
-    // the 2 heads rotated identically
-    for (int i=0; i<6; ++i) {
-        assert_equal(output[i], output[i+6], 1e-6f, "The two heads are rotated identically");
+    // each head is rotated in the exact same way
+    // Head 0: indices 0-3, Head 1: indices 4-7
+    // Head 1 input is 2x Head 0 input, etc. for the rest
+     
+    for (int i=0; i<4; i++) {
+        assert_equal(il_output[i] * 2.0f, il_output[i+4], 1e-5f, 
+                    "IL RoPE consistent across heads");
+        assert_equal(neox_output[i] * 2.0f, neox_output[i+4], 1e-5f, 
+                    "NeoX RoPE consistent across heads");
     }
 }
 
-void TestRope::test_input_to_input() {
-    float input[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
-    int d_flat = 6; // one head
-    int d_head = 6;
-    int d_rotary = 4; // just first 4 dims get rotated
-    float freq_base = 10000.0f;
-    int pos = 1;
-    
-    auto rope_table = create_rope_table(10, d_rotary, freq_base);
-    cpu::neox_rope(input, input, d_flat, d_head, d_rotary, freq_base, pos, rope_table);
-    
-    // first 4 dims rotated
-    assert_true(input[0] != 1.0f || input[2] != 1.0f, "First pair rotated");
-    assert_true(input[1] != 1.0f || input[3] != 1.0f, "Second pair rotated");
-    
-    // last 2 dims unchanged
-    assert_equal(input[4], 1.0f, 1e-6f, "Dim. 4 unchanged");
-    assert_equal(input[5], 1.0f, 1e-6f, "Dim. 5 unchanged");
-}
-
 void TestRope::run_all_tests() {
-    test_zero_position();
-    test_single_head();
+    test_il_rope_zero_position();
+    test_il_rope_single_head();
+    test_il_rope_partial_rotary();
+    test_neox_rope_zero_position();
+    test_neox_rope_single_head();
+    test_neox_rope_partial_rotary();
+    test_in_place_operation();
     test_multiple_heads();
-    test_partial_rotary();
-    test_input_to_input();
 }

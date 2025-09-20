@@ -4,11 +4,14 @@
 
 class TestRope : public TestBase {
 private:
-    void test_zero_position();
-    void test_single_head();
+    void test_il_rope_zero_position();
+    void test_il_rope_single_head();
+    void test_il_rope_partial_rotary();
+    void test_neox_rope_zero_position();
+    void test_neox_rope_single_head();
+    void test_neox_rope_partial_rotary();
+    void test_in_place_operation();
     void test_multiple_heads();
-    void test_partial_rotary();
-    void test_input_to_input();
 
 public:
     explicit TestRope(const std::string& name);

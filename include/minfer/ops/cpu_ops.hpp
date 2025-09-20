@@ -56,7 +56,11 @@ namespace cpu {
     float silu(float x);
     void softmax(float* x_out, const float* x_in, int size);
     void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
+            int d_rotary, float freq_base, int pos);
+    void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
             int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
+    void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
+            int d_rotary, float freq_base, int pos);
     void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
             int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
     void attn(float* att_scores, float* att_out, const float* q_head, const float* kh, const float* vh,
