@@ -53,8 +53,8 @@ This repo currently doesn't support batch decoding for tokens. Thus, the prefill
 |     (M2 Pro CPU, avg of 5 runs)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
 |-------------------------------------|-----------------------------------|----------------------------------|
 | Qwen3-0.6B-FP32                     |               37.5                |           46.52 ± 0.46           |
-| Qwen3-0.6B-BF16                     |               57.2                |              N/A^*               |
-| Qwen3-1.7B-BF16                     |               27.0                |              N/A^*               |
+| Qwen3-0.6B-BF16                     |               57.2                |              N/A*               |
+| Qwen3-1.7B-BF16                     |               27.0                |              N/A*               |
 
 * llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
 
