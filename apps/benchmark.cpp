@@ -1,88 +1,117 @@
 #include "minfer/config/config.hpp"
 #include "minfer/models/qwen3/model.hpp"
 
-#include <optional>
 #include <iostream>
 #include <string>
 #include <cstring>
 #include <cstdlib>
 
 void print_usage(const char* program_name) {
-    std::cout << "Usage: " << program_name << " <model_path> -m <max_len> -s <seed>\n";
+    std::cout << "Usage: " << program_name << " <model_path> [OPTIONS]\n\n";
+    std::cout << "Required arguments:\n";
+    std::cout << "  <model_path>           Path to model file\n";
+    std::cout << "  -s, --seed <int>       Seed for random generation\n\n";
+    std::cout << "Optional arguments:\n";
     std::cout << "  -h, --help             Show this help\n";
-    std::cout << "Required:\n";
-    std::cout << "  -m, --max-len <int>    Maximum sequence length\n";
-    std::cout << "  -s, --seed <int>       Seed for random gen.\n";
+}
+
+struct Args {
+    std::string filepath;
+    int seed = 0;
+    bool help = false;
+    bool valid = true;
+    std::string error;
+};
+
+Args parse_args(int argc, char* argv[]) {
+    Args args;
+    
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            args.help = true;
+            return args;
+        }
+    }
+    
+    if (argc < 2) {
+        args.valid = false;
+        args.error = "Model path required";
+        return args;
+    }
+    
+    args.filepath = argv[1];
+    bool seed_set = false;
+    
+    for (int i = 2; i < argc; ++i) {
+        std::string arg = argv[i];
+        
+        auto get_next_arg = [&]() -> std::string {
+            if (i + 1 >= argc) {
+                args.valid = false;
+                args.error = arg + " requires a value";
+                return "";
+            }
+            return argv[++i];
+        };
+        
+        if (arg == "-h" || arg == "--help") {
+            args.help = true;
+        }
+        else if (arg == "-s" || arg == "--seed") {
+            std::string val = get_next_arg();
+            if (!val.empty()) {
+                args.seed = std::stoi(val);
+                seed_set = true;
+            }
+        }
+        else {
+            args.valid = false;
+            args.error = "Unknown argument: " + arg;
+            break;
+        }
+        
+        if (!args.valid) break;
+    }
+    
+    if (args.valid && !args.help && !seed_set) {
+        args.valid = false;
+        args.error = "Seed is required (-s/--seed)";
+    }
+    
+    return args;
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
+    Args args = parse_args(argc, argv);
+    
+    if (args.help) {
+        print_usage(argv[0]);
+        return 0;
+    }
+    
+    if (!args.valid) {
+        std::cerr << "Error: " << args.error << "\n";
         print_usage(argv[0]);
         return 1;
     }
-
-    std::string filepath = argv[1];
     
-    size_t max_seq_len;
-    int seed;
+    // 4k max context (benchmark only uses 512 positions max)
+    size_t max_seq_len = 4096;
+    size_t num_iters = max_seq_len;
 
-    // parse args (max_seq_len, seed)
-    bool max_len_set = false, seed_set = false;
-
-    for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--max-len") == 0) {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: " << argv[i] << " requires a value\n";
-                print_usage(argv[0]);
-                return 1;
-            }
-            max_seq_len = std::stoull(argv[++i]);
-            max_len_set = true;
-        }
-        else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--seed") == 0) {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: " << argv[i] << " requires a value\n";
-                print_usage(argv[0]);
-                return 1;
-            }
-            seed = std::stoi(argv[++i]);
-            seed_set = true;
-        }
-        else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            print_usage(argv[0]);
-            return 0;
-        }
-        else {
-            std::cerr << "Unknown argument: " << argv[i] << "\n";
-            print_usage(argv[0]);
-            return 1;
-        }
-    }
-
-    if (!max_len_set || !seed_set) {
-        std::cerr << "Error: Both -m/--max-len and -s/--seed are required\n";
-        print_usage(argv[0]);
-        return 1;
-    }
-
-    // run parameters set to default values
-    size_t num_iters;
-    float temperature, top_p, min_p, penalty_pres;
-    size_t top_k;
+    // these have to be set, but are unused
+    float temperature = 0.0f;
+    float penalty_pres = 0.0f;
+    float min_p = 0.0f;
+    float top_p = 0.0f;
+    size_t top_k = 1;
     
-    // default values,
-    temperature = 0.0f;
-    penalty_pres = 0.0f;
-    min_p = 0.0f;
-    top_p = 0.0f;
-    top_k = 1;
-    
-    std::cout << "Model: " << filepath << "\n";
+    std::cout << "Model: " << args.filepath << "\n";
     std::cout << "Max seq. length: " << max_seq_len << "\n";
-    std::cout << "Seed: " << seed << "\n";
+    std::cout << "Seed: " << args.seed << "\n\n";
     
-    RunParams run_params(num_iters, max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, seed);
-    Qwen3Model test(filepath, run_params);
+    RunParams run_params(num_iters, max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, args.seed);
+    Qwen3Model test(args.filepath, run_params);
     test.benchmark();
 
     return 0;
