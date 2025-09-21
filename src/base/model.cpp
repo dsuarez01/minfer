@@ -14,10 +14,16 @@ BaseModel::BaseModel(const std::string& model_file, const RunParams& run_params)
     // derived responsible for setting rest
 }
 
-void BaseModel::append_layer(std::shared_ptr<BaseLayer> layer) {
+void BaseModel::append_layer(std::unique_ptr<BaseLayer> layer) {
     _read_bytes += layer->get_read_bytes();
     // std::cout << "qdtype: " << dtype_to_str(layer->get_qdtype()) << std::endl;
-    _layers.push_back(layer);
+    _layers.push_back(std::move(layer));
+}
+
+void BaseModel::forward(std::shared_ptr<RunState> run_state) {
+    for (auto& layer : _layers) {
+        layer->forward(run_state);
+    }
 }
 
 void BaseModel::set_device(Device target_device) {

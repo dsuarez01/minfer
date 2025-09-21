@@ -6,9 +6,6 @@
 Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_params)
     : BaseModel(model_file, run_params) {
     
-    _gqas.reserve(config->n_layers);
-    _moes.reserve(config->n_layers);
-    
     tokenizer = std::make_unique<Qwen3Tokenizer>(
         config->tokens,
         config->merges,
@@ -20,14 +17,14 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
 
     auto embed_weight = model_data->tensors.at("token_embd.weight");
 
-    _embed = std::make_shared<Qwen3Embed>(
+    auto embed = std::make_unique<Qwen3Embed>(
         config->vocab_size, config->d_model, 
         embed_weight, 
         embed_weight->dtype,
         embed_weight->device
     );
 
-    append_layer(_embed);
+    append_layer(std::move(embed));
 
     // each of n_layers decoder blocks are split into GQA and MoE
     for (int i = 0; i < config->n_layers; ++i) {
@@ -35,7 +32,7 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
         auto dtype_device_gqa = model_data->tensors.at(layer_prefix + "attn_q.weight"); // this is usually quantized
         auto qdtype_gqa = dtype_device_gqa->dtype;
         auto device_gqa = dtype_device_gqa->device;
-        auto gqa = std::make_shared<Qwen3GQA>(
+        auto gqa = std::make_unique<Qwen3GQA>(
             i, // block_idx
             config->d_model, config->user_max_seq_len,
             config->n_heads, config->n_kv_heads, config->d_head, config->d_rotary,
@@ -50,8 +47,7 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
             qdtype_gqa,
             device_gqa
         );
-        _gqas.push_back(gqa);
-        append_layer(gqa);
+        append_layer(std::move(gqa));
         
         std::string gate_key = config->n_experts > 0 ? 
         layer_prefix + "ffn_gate_exps.weight" : 
@@ -68,7 +64,7 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
         auto dtype_device_moe = model_data->tensors.at(gate_key); // this is usually quantized
         auto qdtype_moe = dtype_device_moe->dtype;
         auto device_moe =  dtype_device_moe->device;
-        auto moe = std::make_shared<Qwen3MoE>(
+        auto moe = std::make_unique<Qwen3MoE>(
             config->d_model, config->d_ff,
             config->n_experts, config->n_active_experts,
             config->rms_norm_eps,
@@ -82,20 +78,19 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
             qdtype_moe,
             device_moe
         );
-        _moes.push_back(moe);
-        append_layer(moe);
+        append_layer(std::move(moe));
     }
     
     auto final_norm_weight = model_data->tensors.at("output_norm.weight");
-    _final_norm = std::make_shared<Qwen3FinalRMSNorm>(
+    auto final_norm = std::make_unique<Qwen3FinalRMSNorm>(
         config->d_model, config->rms_norm_eps,
         final_norm_weight,
         final_norm_weight->dtype,
         final_norm_weight->device
     );
-    append_layer(_final_norm);
+    append_layer(std::move(final_norm));
     
-    _lm_head = std::make_shared<Qwen3LMHead>(
+    auto lm_head = std::make_unique<Qwen3LMHead>(
         config->d_model,
         config->vocab_size,
         embed_weight,
@@ -103,16 +98,5 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
         embed_weight->dtype,
         embed_weight->device
     );
-    append_layer(_lm_head);
-}
-
-void Qwen3Model::forward(std::shared_ptr<RunState> run_state) {
-
-    _embed->forward(run_state);
-    for (size_t i = 0; i < _gqas.size(); ++i) {
-        _gqas[i]->forward(run_state);
-        _moes[i]->forward(run_state);
-    }
-    _final_norm->forward(run_state);
-    _lm_head->forward(run_state);
+    append_layer(std::move(lm_head));
 }

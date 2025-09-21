@@ -25,11 +25,11 @@ protected:
     std::unique_ptr<Sampler> sampler;
     std::unique_ptr<GenStats> stats;
     BaseModel(const std::string& model_file, const RunParams& run_params);
-    void append_layer(std::shared_ptr<BaseLayer> layer);
-    virtual void forward(std::shared_ptr<RunState> run_state) = 0;
+    void append_layer(std::unique_ptr<BaseLayer> layer);
+    virtual void forward(std::shared_ptr<RunState> run_state);
 
 private:
     Device _device = Device::CPU;
     size_t _read_bytes = 0; // represents bytes read from weights per forward pass
-    std::vector<std::shared_ptr<BaseLayer>> _layers;
+    std::vector<std::unique_ptr<BaseLayer>> _layers;
 };
