@@ -8,7 +8,7 @@ Steps to use from the project root:
 # if uv not installed already
 pip install uv
 
-# sync uv to install env and dependencies
+# uv sync in python dir to install env and dependencies
 cd python
 uv sync
 
