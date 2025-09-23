@@ -17,9 +17,21 @@ find_library(METAL_FRAMEWORK Metal QUIET)
 
 if(APPLE AND METAL_FRAMEWORK)
     target_compile_definitions(minfer PRIVATE USE_METAL)
+
+    target_sources(minfer PRIVATE config/metal_config.mm)
+
+    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    target_link_libraries(minfer PRIVATE
+        ${METAL_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
+        ${QUARTZCORE_FRAMEWORK}
+    )
+
     message(STATUS "Using Metal backend")
 elseif(CUDAToolkit_FOUND)
     target_compile_definitions(minfer PRIVATE USE_CUDA)
+    # addn. set-up likely required here
     message(STATUS "Using CUDA backend")
 else()
     message(STATUS "No GPU backend found, using CPU only")

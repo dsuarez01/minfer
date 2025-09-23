@@ -6,11 +6,11 @@ void BaseLayer::append_parameter(TPtr tensor) {
     _parameters.push_back(tensor);
 }
 
-void BaseLayer::set_device(Device target_device) {
+void BaseLayer::set_device(DeviceType target_device) {
     if (_device == target_device) return;
     for (auto& param : _parameters) {
         if (param) {
-            param->set_device(target_device); // TO-DO: add support for this in Tensor struct
+            param->set_device(target_device);
         }
     }
     _device = target_device;
@@ -21,7 +21,7 @@ void BaseLayer::set_device(Device target_device) {
 Embed::Embed(
     size_t vocab_size, int d_model, 
     TPtr weight, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : vocab_size(vocab_size), d_model(d_model), 
     weight(weight), 
     BaseLayer(qdtype, device) {
@@ -33,7 +33,7 @@ Embed::Embed(
 Linear::Linear(
     int d_in, int d_out,
     TPtr weight, TPtr bias, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : d_in(d_in), d_out(d_out), 
     weight(weight), bias(bias), 
     BaseLayer(qdtype, device) {
@@ -48,7 +48,7 @@ Linear::Linear(
 RMSNorm::RMSNorm(
     int dim, float eps, 
     TPtr weight, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : dim(dim), eps(eps), 
     weight(weight),
     BaseLayer(qdtype, device) {
@@ -64,7 +64,7 @@ GQA::GQA(
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : block_idx(block_idx), d_model(d_model), max_seq_len(max_seq_len), 
     n_heads(n_heads), n_kv_heads(n_kv_heads), d_head(d_head), d_rotary(d_rotary),
     eps(eps), freq_base(freq_base),
@@ -104,7 +104,7 @@ MoE::MoE(
     int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
     TPtr w_moenorm, TPtr w_router,
     TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : d_model(d_model), d_ff(d_ff), eps(eps), n_experts(n_experts), n_active_experts(n_active_experts),
     w_moenorm(w_moenorm), w_router(w_router), ws_gate(ws_gate), ws_down(ws_down), ws_up(ws_up),
     BaseLayer(qdtype, device)

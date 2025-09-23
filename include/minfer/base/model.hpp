@@ -13,8 +13,8 @@ public:
     
     void generate(std::string& input_text);
     void benchmark();
-    void set_device(Device target_device);
-    Device get_device() const;
+    void set_device(DeviceType target_device);
+    DeviceType get_device() const;
     size_t get_read_bytes() const; // represents bytes read from weights per forward pass
 
 protected:
@@ -29,7 +29,7 @@ protected:
     virtual void forward(std::shared_ptr<RunState> run_state);
 
 private:
-    Device _device = Device::CPU;
+    DeviceType _device = DeviceType::CPU;
     size_t _read_bytes = 0; // represents bytes read from weights per forward pass
     std::vector<std::unique_ptr<BaseLayer>> _layers;
 };

@@ -9,7 +9,7 @@ public:
     Qwen3Embed(
         size_t vocab_size, int d_model, 
         TPtr weight,
-        DataType qdtype, Device device = Device::CPU
+        DataType qdtype, DeviceType device = DeviceType::CPU
     );
 
     void forward(std::shared_ptr<RunState> run_state) override;
@@ -24,7 +24,7 @@ public:
     Qwen3LMHead(
         int d_in, int d_out,
         TPtr weight, TPtr bias,
-        DataType qdtype, Device device = Device::CPU
+        DataType qdtype, DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
@@ -38,7 +38,7 @@ public:
     Qwen3FinalRMSNorm(
         int dim, float eps, 
         TPtr weight,
-        DataType qdtype, Device device = Device::CPU
+        DataType qdtype, DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
@@ -56,7 +56,7 @@ public:
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
         TPtr w_attnnorm, 
-        DataType qdtype, Device device = Device::CPU
+        DataType qdtype, DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
@@ -77,7 +77,7 @@ public:
         int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
         TPtr w_moenorm, TPtr w_router,
         TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-        DataType qdtype, Device device = Device::CPU
+        DataType qdtype, DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 

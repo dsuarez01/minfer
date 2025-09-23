@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cfloat>
 #include <bitset>
-#include <Accelerate/Accelerate.h>
 
 namespace cpu {
     static constexpr int MAX_EXPERTS = 256; // adjust as needed, for visited set in router

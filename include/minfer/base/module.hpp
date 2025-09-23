@@ -6,15 +6,15 @@ using TPtr = std::shared_ptr<Tensor>;
 
 class BaseLayer {
 public:
-    BaseLayer(DataType qdtype, Device device) : _qdtype(qdtype), _device(device) {};
+    BaseLayer(DataType qdtype, DeviceType device) : _qdtype(qdtype), _device(device) {};
     virtual ~BaseLayer() = default; // need virtual public destructor
     virtual void forward(std::shared_ptr<RunState> run_state) = 0; // now we cannot instantiate BaseLayer
     
-    void set_device(Device target_device);
+    void set_device(DeviceType target_device);
     void set_qdtype(DataType qdtype) { this->_qdtype = qdtype; };
     void set_read_bytes(size_t bytes) { _read_bytes = bytes; };
 
-    Device get_device() const { return this->_device; };
+    DeviceType get_device() const { return this->_device; };
     DataType get_qdtype() const { return this->_qdtype; };
     size_t get_read_bytes() const { return this->_read_bytes; }; // defined as num bytes read from weights per forward pass
 
@@ -24,7 +24,7 @@ protected:
 private:
     std::vector<TPtr> _parameters;
     DataType _qdtype;  // quantized weight dtype (F32, F16, etc)
-    Device _device;
+    DeviceType _device;
     size_t _read_bytes = 0; // set in init. of derived classes
 };
 
@@ -34,7 +34,7 @@ public:
     Embed(
         size_t vocab_size, int d_model, 
         TPtr weight, 
-        DataType qdtype, Device device
+        DataType qdtype, DeviceType device
     );
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
@@ -49,7 +49,7 @@ public:
     Linear(
         int d_in, int d_out,
         TPtr weight, TPtr bias, 
-        DataType qdtype, Device device
+        DataType qdtype, DeviceType device
     );
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
@@ -65,7 +65,7 @@ public:
     RMSNorm(
         int dim, float eps, 
         TPtr weight, 
-        DataType qdtype, Device device
+        DataType qdtype, DeviceType device
     );
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
@@ -84,7 +84,7 @@ public:
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
         TPtr w_attnnorm,
-        DataType qdtype, Device device
+        DataType qdtype, DeviceType device
     );
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
@@ -107,7 +107,7 @@ public:
     MoE(
         int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
         TPtr w_moenorm, TPtr w_router, TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-        DataType qdtype, Device device
+        DataType qdtype, DeviceType device
     );
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 

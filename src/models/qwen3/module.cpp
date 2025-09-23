@@ -29,7 +29,7 @@ namespace {
 Qwen3Embed::Qwen3Embed(
     size_t vocab_size, int d_model, 
     TPtr weight, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : Embed(vocab_size, d_model, weight, qdtype, device) {
 
     set_read_bytes(weight->size_bytes / vocab_size); // only read a row of embed per forward pass
@@ -37,7 +37,7 @@ Qwen3Embed::Qwen3Embed(
 
 void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
     // Device dispatch (GPU case not implemented yet)
-    if (get_device() == Device::CPU) {
+    if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3Embed::cpu_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
             case DataType::F16: Qwen3Embed::cpu_forward<fp16_t, fp16_tag>(run_state->x.get(), run_state->token_id); break;
@@ -62,14 +62,14 @@ void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
 Qwen3LMHead::Qwen3LMHead(
     int d_in, int d_out,
     TPtr weight, TPtr bias, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : Linear(d_in, d_out, weight, bias, qdtype, device) {
     set_read_bytes(weight->size_bytes + (bias ? bias->size_bytes : 0));
 }
 
 void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
     if (run_state->compute_logits) {
-        if (get_device() == Device::CPU) {
+        if (get_device() == DeviceType::CPU) {
             switch (get_qdtype()) {
                 case DataType::F32: Qwen3LMHead::cpu_forward<float, float_tag>(run_state->logits.get(), run_state->x.get()); break;
                 case DataType::F16: Qwen3LMHead::cpu_forward<fp16_t, fp16_tag>(run_state->logits.get(), run_state->x.get()); break;
@@ -97,7 +97,7 @@ void Qwen3LMHead::cpu_forward(float* x_out, const float* x_in) {
 Qwen3FinalRMSNorm::Qwen3FinalRMSNorm(
     int dim, float eps, 
     TPtr weight,
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : RMSNorm(dim, eps, weight, qdtype, device) {
 
     set_read_bytes(weight->size_bytes);
@@ -105,7 +105,7 @@ Qwen3FinalRMSNorm::Qwen3FinalRMSNorm(
 
 void Qwen3FinalRMSNorm::forward(std::shared_ptr<RunState> run_state) {
     // Device dispatch (GPU case not implemented yet)
-    if (get_device() == Device::CPU) {
+    if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3FinalRMSNorm::cpu_forward<float, float_tag>(run_state->x.get(), run_state->x.get()); break;
             default: assert(false && "Qwen3FinalRMSNorm has invalid or unsupported qdtype"); break;
@@ -129,7 +129,7 @@ Qwen3GQA::Qwen3GQA(
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : GQA(
         block_idx, d_model, max_seq_len, 
         n_heads, n_kv_heads, d_head, d_rotary,
@@ -144,7 +144,7 @@ Qwen3GQA::Qwen3GQA(
     }
 
 void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
-    if (get_device() == Device::CPU) {
+    if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3GQA::cpu_forward<float, float_tag>(
                 run_state->x.get(), run_state->xb.get(), 
@@ -244,7 +244,7 @@ Qwen3MoE::Qwen3MoE(
     int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
     TPtr w_moenorm, TPtr w_router,
     TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-    DataType qdtype, Device device
+    DataType qdtype, DeviceType device
 ) : MoE(
         d_model, d_ff, n_experts, n_active_experts, eps, 
         w_moenorm, w_router,
@@ -260,7 +260,7 @@ Qwen3MoE::Qwen3MoE(
     }
 
 void Qwen3MoE::forward(std::shared_ptr<RunState> run_state) {
-    if (get_device() == Device::CPU) {
+    if (get_device() == DeviceType::CPU) {
         switch(get_qdtype()) {
             case DataType::F32: Qwen3MoE::cpu_forward<float, float_tag>(
                 run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),

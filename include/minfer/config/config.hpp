@@ -3,6 +3,7 @@
 #include "minfer/parsing/gguf.hpp"
 #include "extern/nlohmann/json.hpp"
 
+#include <cstdlib>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -15,7 +16,7 @@
 using json = nlohmann::ordered_json;
 
 enum class DataType { F32 = 0, F16 = 1, BF16 = 2, INVALID = 3 };
-enum class Device { CPU, GPU };
+enum class DeviceType { CPU, METAL };
 
 struct Tensor {
     void* data = nullptr;
@@ -23,10 +24,13 @@ struct Tensor {
     std::array<int,4> shape = {0,0,0,0};
     DataType dtype;
     size_t size_bytes = 0;
-    Device device = Device::CPU;
+    DeviceType device = DeviceType::CPU;
     
-    void set_device(Device target_device);
+    void set_device(DeviceType target_device);
     json to_json() const;
+
+    void to_metal();
+    void from_metal();
 };
 
 struct ModelData {
@@ -82,27 +86,37 @@ struct Config {
     Config(const ModelData& model_data, const RunParams& runtime_params);
 };
 
-struct RunState {
-    Device device;
-    int cur_pos;                                       // cur pos in seq
-    uint32_t token_id;                                 // token ID at current pos. in seq.
-    bool compute_logits;                               // prefill optimization
+struct AlignedDeleter {
+    void operator()(void* ptr) {
+        std::free(ptr);
+    }
+};
 
-    std::unique_ptr<float[]> x, xb, xb2;               // activations
-    std::unique_ptr<float[]> hb, hb2;                  // ffn
-    std::unique_ptr<float[]> q, k, v, att_scores, att_out;             // attention
-    std::unique_ptr<float[]> k_cache, v_cache;         // k,v caches
-    std::unique_ptr<float[]> moe_scores;               // router scores for all experts
-    std::unique_ptr<int[]> active_experts;             // indices of topK (active) experts
-    std::unique_ptr<float[]> active_experts_scores;    // scores for topK (active) experts
-    std::unique_ptr<float[]> active_experts_weights;   // weights for topK (active) experts
-    std::unique_ptr<float[]> logits;                   // output logits at end
+struct RunState {
+    std::shared_ptr<Config> config;
+    DeviceType device;
+    int cur_pos;            // cur pos in seq
+    uint32_t token_id;      // token ID at current pos. in seq.
+    bool compute_logits;    // prefill optimization
+
+    std::unique_ptr<float[], AlignedDeleter> x, xb, xb2;                               // activations
+    std::unique_ptr<float[], AlignedDeleter> hb, hb2;                                  // ffn
+    std::unique_ptr<float[], AlignedDeleter> q, k, v, att_scores, att_out;             // attention
+    std::unique_ptr<float[], AlignedDeleter> k_cache, v_cache;                         // k,v caches
+    std::unique_ptr<float[], AlignedDeleter> moe_scores;                               // router scores for all experts
+    std::unique_ptr<int[], AlignedDeleter> active_experts;                             // indices of topK (active) experts
+    std::unique_ptr<float[], AlignedDeleter> active_experts_scores;                    // scores for topK (active) experts
+    std::unique_ptr<float[], AlignedDeleter> active_experts_weights;                   // weights for topK (active) experts
+    std::unique_ptr<float[], AlignedDeleter> logits;                                   // output logits at end
     
     // kv cache bytes per position
     size_t kv_bytes_per_pos;
 
     explicit RunState(const std::shared_ptr<Config> config);
-    void set_device(Device target_device);
+    void set_device(DeviceType target_device);
+
+    void to_metal();
+    void from_metal();
 };
 
 struct GenStats {
@@ -123,3 +137,4 @@ DataType tensor_to_data_type(TensorType t_type);
 size_t dtype_size(DataType dtype);
 std::string dtype_to_str(DataType dtype);
 DataType str_to_dtype(std::string& dtype_str);
+std::string device_to_str(DeviceType device);

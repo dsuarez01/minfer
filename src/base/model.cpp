@@ -1,4 +1,5 @@
 #include "minfer/base/model.hpp"
+#include "minfer/config/metal_config.hpp"
 
 #include <iostream>
 
@@ -26,8 +27,22 @@ void BaseModel::forward(std::shared_ptr<RunState> run_state) {
     }
 }
 
-void BaseModel::set_device(Device target_device) {
+void BaseModel::set_device(DeviceType target_device) {
     if (this->_device == target_device) return;
+
+    if (target_device == DeviceType::METAL) {
+        #if defined(USE_METAL)
+            static bool first = true;
+            if (first) {
+                MetalManager::init();
+                first = false;
+            }
+        #else
+            std::cerr << "Metal backend currently unavailable, transfer failed. Device of model unchanged." << std::endl;
+            return;
+        #endif
+    }
+
     for (auto& layer : _layers) {
         layer->set_device(target_device);
     }
@@ -35,7 +50,7 @@ void BaseModel::set_device(Device target_device) {
     this->_device = target_device;
 }
 
-Device BaseModel::get_device() const {
+DeviceType BaseModel::get_device() const {
     return this->_device;
 }
 

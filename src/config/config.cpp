@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <cstdint>
 #include <algorithm>
+#include <unistd.h>
 
 namespace {
     template<typename T>
@@ -67,6 +68,30 @@ namespace {
             throw std::runtime_error("Size too large");
         }
     }
+
+    // alloc computation buffers aligned w page size
+    template<typename T>
+    std::unique_ptr<T[], AlignedDeleter> make_aligned_unique(size_t count) {
+        size_t size = count * sizeof(T);
+        size_t alignment = getpagesize();
+        
+        // size has to be multiple of alignment to pass in to aligned_alloc
+        size_t aligned_size = ((size + alignment - 1) / alignment) * alignment;
+        
+        void* ptr = std::aligned_alloc(alignment, aligned_size);
+        if (!ptr) throw std::bad_alloc();
+        
+        return std::unique_ptr<T[], AlignedDeleter>(static_cast<T*>(ptr));
+    }
+
+}
+
+std::string device_to_str(DeviceType device) {
+    switch (device) {
+        case DeviceType::CPU: return "CPU"; break;
+        case DeviceType::METAL: return "Metal"; break;
+        default: return ""; break;
+    }
 }
 
 DataType tensor_to_data_type(TensorType t_type) {
@@ -117,16 +142,36 @@ json Tensor::to_json() const {
         {"shape", shape},
         {"dtype", dtype_to_str(dtype)},
         {"size_bytes", size_bytes},
-        {"device", device == Device::CPU ? "CPU" : "GPU"},
+        {"device", device == DeviceType::CPU ? "CPU" : "GPU"},
         {"data_ptr", ss.str()}
     };
 }
 
-void Tensor::set_device(Device target_device) {
+void Tensor::set_device(DeviceType target_device) {
     if (device == target_device) return;
-    // Copy/transfer data from current device to target device (depends on what target_device is so 
-    // this is the interface to check)
-    // TO-DO: implement this
+    
+    switch (device) {
+        // CPU -> X
+        case DeviceType::CPU: {
+            switch (target_device) {
+                case DeviceType::METAL: to_metal(); break;
+                default: assert(false && "Not supported"); break;
+            }
+            break;
+        }
+
+        // Metal -> X
+        case DeviceType::METAL: {
+            switch (target_device) {
+                case DeviceType::CPU: from_metal(); break;
+                default: assert(false && "Not supported"); break;
+            }
+            break;
+        }
+
+        default: assert(false && "Not supported"); break;
+    }
+
     device = target_device;
 }
 
@@ -180,7 +225,7 @@ int ModelData::from_file(const std::string& filename) {
             check(tensor->size_bytes, gguf_file.tensor_data_size - info.offset);
 
             tensor->data = gguf_file.tensor_data + info.offset;
-            tensor->device = Device::CPU;
+            tensor->device = DeviceType::CPU;
             tensors[tensor->name] = tensor;
             
             tensor_metadata[tensor->name] = tensor->to_json();
@@ -271,49 +316,70 @@ Config::Config(const ModelData& model_data, const RunParams& runtime_params) {
     seed = runtime_params.seed;
 }
 
-RunState::RunState(const std::shared_ptr<Config> config) {
-    device = Device::CPU;
+RunState::RunState(const std::shared_ptr<Config> config) : config(config) {
+    device = DeviceType::CPU;
     cur_pos = 0;
     token_id = 0;
     compute_logits = false;
 
     // activations
-    x = std::make_unique<float[]>(config->d_model);
-    xb = std::make_unique<float[]>(config->d_model);
-    xb2 = std::make_unique<float[]>(config->d_model);
-    
-    // FFN
-    hb = std::make_unique<float[]>(config->d_ff);
-    hb2 = std::make_unique<float[]>(config->d_ff);
-    
-    // attn
-    q = std::make_unique<float[]>(config->n_heads*config->d_head);
-    k = std::make_unique<float[]>(config->n_kv_heads*config->d_head);
-    v = std::make_unique<float[]>(config->n_kv_heads*config->d_head);
-    att_scores = std::make_unique<float[]>(config->n_heads*config->user_max_seq_len);
-    att_out = std::make_unique<float[]>(config->n_heads * config->d_head);
-    
-    // kv cache
-    k_cache = std::make_unique<float[]>(config->n_layers *config->n_kv_heads * config->user_max_seq_len * config->d_head);
-    v_cache = std::make_unique<float[]>(config->n_layers * config->n_kv_heads * config->user_max_seq_len * config->d_head);
-    
-    // MoE buffers (reduces to dense case when n_experts, n_active_experts = 0)
-    moe_scores = std::make_unique<float[]>(std::max(config->n_experts, 1));
-    active_experts = std::make_unique<int[]>(std::max(config->n_active_experts, 1));
-    active_experts_scores = std::make_unique<float[]>(std::max(config->n_active_experts, 1));
-    active_experts_weights = std::make_unique<float[]>(std::max(config->n_active_experts, 1));
+    x = make_aligned_unique<float>(config->d_model);
+    xb = make_aligned_unique<float>(config->d_model);
+    xb2 = make_aligned_unique<float>(config->d_model);
 
-    logits = std::make_unique<float[]>(config->vocab_size);
+    // FFN
+    hb = make_aligned_unique<float>(config->d_ff);
+    hb2 = make_aligned_unique<float>(config->d_ff);
+
+    // attn
+    q = make_aligned_unique<float>(config->n_heads*config->d_head);
+    k = make_aligned_unique<float>(config->n_kv_heads*config->d_head);
+    v = make_aligned_unique<float>(config->n_kv_heads*config->d_head);
+    att_scores = make_aligned_unique<float>(config->n_heads*config->user_max_seq_len);
+    att_out = make_aligned_unique<float>(config->n_heads * config->d_head);
+
+    // kv cache
+    k_cache = make_aligned_unique<float>(config->n_layers *config->n_kv_heads * config->user_max_seq_len * config->d_head);
+    v_cache = make_aligned_unique<float>(config->n_layers * config->n_kv_heads * config->user_max_seq_len * config->d_head);
+
+    // MoE buffers (reduces to dense case when n_experts, n_active_experts = 0)
+    moe_scores = make_aligned_unique<float>(std::max(config->n_experts, 1));
+    active_experts = make_aligned_unique<int>(std::max(config->n_active_experts, 1));
+    active_experts_scores = make_aligned_unique<float>(std::max(config->n_active_experts, 1));
+    active_experts_weights = make_aligned_unique<float>(std::max(config->n_active_experts, 1));
+
+    // logits
+    logits = make_aligned_unique<float>(config->vocab_size);
 
     // bytes req for kv cache per position
     kv_bytes_per_pos = 2 * config->n_layers * config->n_kv_heads * config->d_head * sizeof(float);
 }
 
-void RunState::set_device(Device target_device) {
+void RunState::set_device(DeviceType target_device) {
     if (device == target_device) return;
     
-    // TODO: Implement device transfer logic
-    // just update device flag for now
+    switch (device) {
+        // CPU -> X
+        case DeviceType::CPU: {
+            switch (target_device) {
+                case DeviceType::METAL: to_metal(); break;
+                default: assert(false && "Not supported"); break;
+            }
+            break;
+        }
+
+        // Metal -> X
+        case DeviceType::METAL: {
+            switch (target_device) {
+                case DeviceType::CPU: from_metal(); break;
+                default: assert(false && "Not supported"); break;
+            }
+            break;
+        }
+
+        default: assert(false && "Not supported"); break;
+    }
+
     device = target_device;
 }
 
@@ -334,3 +400,26 @@ void GenStats::print_stats() const {
               << "Generation throughput: " << std::setprecision(2) << this->throughput << " tok/sec\n"
               << "Mem. Bandwidth: " << std::setprecision(3) << this->bandwidth << " GB/sec" << std::endl;
 }
+
+#ifndef USE_METAL
+    // stubs
+    namespace MetalManager {
+        void init() {}
+        void* upload(void*, size_t) { return nullptr; }
+        void release(void*) {}
+    }
+
+    void Tensor::to_metal() { 
+        assert(false && "Metal backend not found: Tensor to_metal is undef"); 
+    }
+    void Tensor::from_metal() { 
+        assert(false && "Metal backend not found: Tensor from_metal is undef"); 
+    }
+
+    void RunState::to_metal() { 
+        assert(false && "Metal backend not found: RunState to_metal is undef"); 
+    }
+    void RunState::from_metal() { 
+        assert(false && "Metal backend not found: RunState from_metal is undef"); 
+    }
+#endif
