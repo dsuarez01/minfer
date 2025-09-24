@@ -402,13 +402,6 @@ void GenStats::print_stats() const {
 }
 
 #ifndef USE_METAL
-    // stubs
-    namespace MetalManager {
-        void init() {}
-        void* upload(void*, size_t) { return nullptr; }
-        void release(void*) {}
-    }
-
     void Tensor::to_metal() { 
         assert(false && "Metal backend not found: Tensor to_metal is undef"); 
     }

@@ -44,8 +44,15 @@ void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
             case DataType::BF16: Qwen3Embed::cpu_forward<bf16_t, bf16_tag>(run_state->x.get(), run_state->token_id); break;
             default: assert(false && "Qwen3Embed has invalid or unsupported qdtype"); break;
         }
+    } else if (get_device() == DeviceType::METAL) {
+        switch (get_qdtype()) {
+            case DataType::F32: Qwen3Embed::metal_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
+            case DataType::F16: Qwen3Embed::metal_forward<fp16_t, fp16_tag>(run_state->x.get(), run_state->token_id); break;
+            case DataType::BF16: Qwen3Embed::metal_forward<bf16_t, bf16_tag>(run_state->x.get(), run_state->token_id); break;
+            default: assert(false && "Qwen3Embed has invalid or unsupported qdtype"); break;
+        }
     } else {
-        assert(false && "Qwen3Embed GPU support not implemented yet");
+        assert(false && "Qwen3Embed support for this device not implemented yet");
     }
 }
 
@@ -55,6 +62,17 @@ void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
     for (int i=0; i<d_model; ++i) {
         x_out[i] = convert_to_float<WeightType, Tag>(embed_vector[i]); // ← Pass both template params
     }
+}
+
+template <typename WeightType, typename Tag>
+void Qwen3Embed::metal_forward(float* x_out, int token_id) {
+    // auto* encoder = MetalManager::get_compute_encoder();
+
+    // // create pipeline on first use
+    // static auto* pipeline = MetalManager::create_pipeline(/* embed_src */, "embed_kernel");
+
+    // MetalManager::dispatch_kernel(/* TBD */);
+    return;
 }
 
 // === LM HEAD ===
@@ -76,8 +94,15 @@ void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
                 case DataType::BF16: Qwen3LMHead::cpu_forward<bf16_t, bf16_tag>(run_state->logits.get(), run_state->x.get()); break;
                 default: assert(false && "Qwen3LMHead has invalid or unsupported qdtype"); break;
             }
+        } else if (get_device() == DeviceType::METAL) {
+            switch (get_qdtype()) {
+                case DataType::F32: Qwen3LMHead::metal_forward<float, float_tag>(run_state->logits.get(), run_state->x.get()); break;
+                case DataType::F16: Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(run_state->logits.get(), run_state->x.get()); break;
+                case DataType::BF16: Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(run_state->logits.get(), run_state->x.get()); break;
+                default: assert(false && "Qwen3LMHead has invalid or unsupported qdtype"); break;
+            }
         } else {
-            assert(false && "Qwen3LMHead GPU support not implemented yet");
+            assert(false && "Qwen3LMHead support for this device not implemented yet");
         }
     }
 }
@@ -90,6 +115,17 @@ void Qwen3LMHead::cpu_forward(float* x_out, const float* x_in) {
             x_out[i] += convert_to_float<WeightType, Tag>(static_cast<WeightType*>(bias->data)[i]);
         }
     }
+}
+
+template <typename WeightType, typename Tag>
+void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
+    // auto* encoder = MetalManager::get_compute_encoder();
+
+    // // create pipeline on first use
+    // static auto* pipeline = MetalManager::create_pipeline(/* linear_src */, "linear_kernel");
+
+    // MetalManager::dispatch_kernel(/* TBD */);
+    return;
 }
 
 // === FINAL RMS NORM ===
@@ -110,14 +146,30 @@ void Qwen3FinalRMSNorm::forward(std::shared_ptr<RunState> run_state) {
             case DataType::F32: Qwen3FinalRMSNorm::cpu_forward<float, float_tag>(run_state->x.get(), run_state->x.get()); break;
             default: assert(false && "Qwen3FinalRMSNorm has invalid or unsupported qdtype"); break;
         }
+    } else if (get_device() == DeviceType::METAL) {
+        switch (get_qdtype()) {
+            case DataType::F32: Qwen3FinalRMSNorm::metal_forward<float, float_tag>(run_state->x.get(), run_state->x.get()); break;
+            default: assert(false && "Qwen3FinalRMSNorm has invalid or unsupported qdtype"); break;
+        }
     } else {
-        assert(false && "Qwen3FinalRMSNorm GPU support not implemented yet");
+        assert(false && "Qwen3FinalRMSNorm support for this device not implemented yet");
     }
 }
 
 template <typename WeightType, typename Tag>
 void Qwen3FinalRMSNorm::cpu_forward(float* x_out, float* x_in) {
     cpu::rmsnorm(x_out, x_in, static_cast<WeightType*>(weight->data), dim, eps);
+}
+
+template <typename WeightType, typename Tag>
+void Qwen3FinalRMSNorm::metal_forward(float* x_out, float* x_in) {
+    // auto* encoder = MetalManager::get_compute_encoder();
+
+    // // create pipeline on first use
+    // static auto* pipeline = MetalManager::create_pipeline(/* rms_src */, "rms_kernel");
+
+    // MetalManager::dispatch_kernel(/* TBD */);
+    return;
 }
 
 // === GQA ===
@@ -174,8 +226,36 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
             
         }
         
+    } else if (get_device() == DeviceType::METAL) {
+        switch (get_qdtype()) {
+            case DataType::F32: Qwen3GQA::cpu_forward<float, float_tag>(
+                run_state->x.get(), run_state->xb.get(), 
+                run_state->att_out.get(), run_state->att_scores.get(),
+                run_state->q.get(), run_state->k.get(), run_state->v.get(),
+                run_state->k_cache.get(), run_state->v_cache.get(),
+                run_state->cur_pos
+            ); break;
+
+            case DataType::F16: Qwen3GQA::cpu_forward<fp16_t, fp16_tag>(
+                run_state->x.get(), run_state->xb.get(), 
+                run_state->att_out.get(), run_state->att_scores.get(),
+                run_state->q.get(), run_state->k.get(), run_state->v.get(),
+                run_state->k_cache.get(), run_state->v_cache.get(),
+                run_state->cur_pos
+            ); break;
+
+            case DataType::BF16: Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(
+                run_state->x.get(), run_state->xb.get(), 
+                run_state->att_out.get(), run_state->att_scores.get(),
+                run_state->q.get(), run_state->k.get(), run_state->v.get(),
+                run_state->k_cache.get(), run_state->v_cache.get(),
+                run_state->cur_pos
+            ); break;
+
+            default: assert(false && "Qwen3GQA has invalid or unsupported qdtype"); break;
+        }
     } else {
-        assert(false && "Qwen3GQA GPU support not implemented yet");
+        assert(false && "Qwen3GQA support for this device not implemented yet");
     }
 }
 
@@ -238,6 +318,23 @@ void Qwen3GQA::cpu_forward(
     }
 }
 
+template <typename WeightType, typename Tag>
+void Qwen3GQA::metal_forward(
+    float* x_in, float* x_norm, 
+    float* att_out_buf, float* att_scores_buf, 
+    float* q_buf, float* k_buf, float* v_buf,
+    float* k_cache, float* v_cache,
+    int cur_pos
+) {
+    // auto* encoder = MetalManager::get_compute_encoder();
+
+    // // create pipeline on first use
+    // static auto* pipeline = MetalManager::create_pipeline(/* gqa_src */, "gqa_kernel");
+
+    // MetalManager::dispatch_kernel(/* TBD */);
+    return;
+}
+
 // === MOE ===
 
 Qwen3MoE::Qwen3MoE(
@@ -286,8 +383,33 @@ void Qwen3MoE::forward(std::shared_ptr<RunState> run_state) {
             default: assert(false && "Qwen3MoE has invalid or unsupported qdtype"); break;
 
         }
+    } else if (get_device() == DeviceType::METAL) {
+        switch (get_qdtype()) {
+            case DataType::F32: Qwen3MoE::metal_forward<float, float_tag>(
+                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
+                run_state->hb.get(), run_state->hb2.get(),
+                run_state->active_experts.get(), run_state->active_experts_scores.get(),
+                run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            ); break;
+
+            case DataType::F16: Qwen3MoE::metal_forward<fp16_t, fp16_tag>(
+                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
+                run_state->hb.get(), run_state->hb2.get(),
+                run_state->active_experts.get(), run_state->active_experts_scores.get(),
+                run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            ); break;
+
+            case DataType::BF16: Qwen3MoE::metal_forward<bf16_t, bf16_tag>(
+                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
+                run_state->hb.get(), run_state->hb2.get(),
+                run_state->active_experts.get(), run_state->active_experts_scores.get(),
+                run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            ); break;
+
+            default: assert(false && "Qwen3MoE has invalid or unsupported qdtype"); break;
+        }
     } else {
-        assert(false && "Qwen3MoE GPU support not implemented yet");
+        assert(false && "Qwen3MoE support for this device not implemented yet");
     }
 }
 
@@ -328,7 +450,25 @@ void Qwen3MoE::cpu_forward(
     }
 }
 
+template <typename WeightType, typename Tag>
+void Qwen3MoE::metal_forward(
+    float* x_in, float* x_norm,
+    float* exp_buf, float* gate_buf, float* up_buf,
+    int* active_experts, float* active_experts_scores, 
+    float* active_experts_weights, float* moe_scores
+) {
+    // auto* encoder = MetalManager::get_compute_encoder();
+
+    // // create pipeline on first use
+    // static auto* pipeline = MetalManager::create_pipeline(/* moe_src */, "moe_kernel");
+
+    // MetalManager::dispatch_kernel(/* to be determined */);
+    return;
+}
+
 // explicit instantiations
+
+// CPU
 template void Qwen3Embed::cpu_forward<float, float_tag>(float*, int);
 template void Qwen3Embed::cpu_forward<fp16_t, fp16_tag>(float*, int);
 template void Qwen3Embed::cpu_forward<bf16_t, bf16_tag>(float*, int);
@@ -346,3 +486,22 @@ template void Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(float*, float*, float*, fl
 template void Qwen3MoE::cpu_forward<float, float_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
 template void Qwen3MoE::cpu_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
 template void Qwen3MoE::cpu_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
+
+// GPU
+template void Qwen3Embed::metal_forward<float, float_tag>(float*, int);
+template void Qwen3Embed::metal_forward<fp16_t, fp16_tag>(float*, int);
+template void Qwen3Embed::metal_forward<bf16_t, bf16_tag>(float*, int);
+
+template void Qwen3LMHead::metal_forward<float, float_tag>(float*, const float*);
+template void Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(float*, const float*);
+template void Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(float*, const float*);
+
+template void Qwen3FinalRMSNorm::metal_forward<float, float_tag>(float* x_out, float* x_in);
+
+template void Qwen3GQA::metal_forward<float, float_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
+template void Qwen3GQA::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
+template void Qwen3GQA::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
+
+template void Qwen3MoE::metal_forward<float, float_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
+template void Qwen3MoE::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
+template void Qwen3MoE::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);

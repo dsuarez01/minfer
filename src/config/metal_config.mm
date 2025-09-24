@@ -1,11 +1,12 @@
 #include "minfer/config/config.hpp"
 #include "minfer/config/metal_config.hpp"
+#include <iostream>
 
 #ifdef USE_METAL
     #define NS_PRIVATE_IMPLEMENTATION
     #define CA_PRIVATE_IMPLEMENTATION  
     #define MTL_PRIVATE_IMPLEMENTATION
-    #include "Metal/Metal.hpp"
+    #include "extern/Metal/Metal.hpp"
 
     namespace {
 
@@ -21,24 +22,40 @@
             }
         };
 
+        struct MetalCmdBufferDeleter {
+            void operator()(MTL::CommandBuffer* buffer) {
+                if (buffer) buffer->release();
+            }
+        };
+        
+        struct MetalEncoderDeleter {
+            void operator()(MTL::ComputeCommandEncoder* encoder) {
+                if (encoder) encoder->release();
+            }
+        };
+
         struct MetalContext {
             std::unique_ptr<MTL::Device, MetalDeviceDeleter> device;
             std::unique_ptr<MTL::CommandQueue, MetalCmdQueueDeleter> cmd_queue;
+
+            std::unique_ptr<MTL::CommandBuffer, MetalCmdBufferDeleter> current_cmd_buffer = nullptr;
+            std::unique_ptr<MTL::ComputeCommandEncoder, MetalEncoderDeleter> current_encoder = nullptr;
         };
         
+        // one metal context for entire appn
         static std::unique_ptr<MetalContext> g_metal_ctx;
 
         template<typename T>
         void buffer_to_metal(std::unique_ptr<T[], AlignedDeleter>& buffer, size_t count) {
             T* old_ptr = buffer.release();
-            void* metal_ptr = MetalManager::upload(old_ptr, count * sizeof(T));
-            assert(metal_ptr);
-            buffer.reset(static_cast<T*>(metal_ptr));
+            auto* metal_buf = static_cast<MTL::Buffer*>(MetalManager::upload(old_ptr, count * sizeof(T)));
+            assert(metal_buf);
+            buffer.reset(reinterpret_cast<T*>(metal_buf));
         }
 
         template<typename T>
         void buffer_from_metal(std::unique_ptr<T[], AlignedDeleter>& buffer) {
-            MTL::Buffer* metal_buf = reinterpret_cast<MTL::Buffer*>(buffer.release());
+            auto* metal_buf = reinterpret_cast<MTL::Buffer*>(buffer.release());
             T* cpu_ptr = static_cast<T*>(metal_buf->contents());
             MetalManager::release(metal_buf);
             buffer.reset(cpu_ptr);
@@ -56,7 +73,7 @@
 
         void* upload(void* data, size_t size) {
             if (!g_metal_ctx || !g_metal_ctx->device) return nullptr;
-            void* buffer = g_metal_ctx->device->newBuffer(data, size, MTL::ResourceStorageModeShared, nullptr);
+            MTL::Buffer* buffer = g_metal_ctx->device->newBuffer(data, size, MTL::ResourceStorageModeShared, nullptr);
             assert(buffer);
             return buffer;
         }
@@ -66,10 +83,113 @@
                 static_cast<MTL::Buffer*>(metal_buffer)->release();
             }
         }
+
+        void begin_frame() {
+            if (!g_metal_ctx || !g_metal_ctx->cmd_queue) return;
+
+            if (g_metal_ctx->current_cmd_buffer) {
+                end_frame();
+            }
+
+            MTL::CommandBuffer* cmd_buffer = g_metal_ctx->cmd_queue->commandBuffer();
+            g_metal_ctx->current_cmd_buffer.reset(cmd_buffer);
+
+            MTL::ComputeCommandEncoder* encoder = cmd_buffer->computeCommandEncoder();
+            g_metal_ctx->current_encoder.reset(encoder);
+        }
+
+        void* get_compute_encoder() {
+            return g_metal_ctx ? g_metal_ctx->current_encoder.get() : nullptr;
+        }
+
+        void end_frame() {
+            if (!g_metal_ctx) return;
+
+            if (g_metal_ctx->current_encoder) {
+                g_metal_ctx->current_encoder->endEncoding();
+                g_metal_ctx->current_encoder.reset();
+            }
+
+            if (g_metal_ctx->current_cmd_buffer) {
+                g_metal_ctx->current_cmd_buffer->commit();
+                g_metal_ctx->current_cmd_buffer->waitUntilCompleted();
+                g_metal_ctx->current_cmd_buffer.reset();
+            }
+        }
+
+        void* create_pipeline(const char* kernel_src, const char* fcn_name) {
+            if (!g_metal_ctx || !g_metal_ctx->device) return nullptr;
+
+            NS::Error* err = nullptr;
+
+            // create lib from src str
+            NS::String* src_str = NS::String::string(kernel_src, NS::ASCIIStringEncoding);
+
+            MTL::Library* lib = g_metal_ctx->device->newLibrary(src_str, nullptr, &err);
+
+            if (!lib) {
+                std::cerr << "Failed to compile Metal library";
+                if (err) {
+                    std::cerr << ": " << err->localizedDescription()->utf8String();
+                    err->release();
+                }
+                std::cerr << std::endl;
+                src_str->release();
+                return nullptr;
+            }
+
+            // get fcn from lib
+            NS::String* ns_fcn_name = NS::String::string(fcn_name, NS::ASCIIStringEncoding);
+            MTL::Function* fcn = lib->newFunction(ns_fcn_name);
+
+            if (!fcn) {
+                std::cerr << "Failed to find function: " << fcn_name << std::endl;
+                lib->release();
+                src_str->release();
+                ns_fcn_name->release();
+                return nullptr;
+            }
+
+            // create compute pipeline
+            MTL::ComputePipelineState* pipeline = g_metal_ctx->device->newComputePipelineState(fcn, &err);
+            if (!pipeline) {
+                std::cerr << "Failed to create compute pipeline state";
+                if (err) {
+                    std::cerr << ": " << err->localizedDescription()->utf8String();
+                    err->release();
+                }
+                std::cerr << std::endl;
+            }
+
+            lib->release();
+            fcn->release();
+            src_str->release();
+            ns_fcn_name->release();
+
+            return pipeline;
+        }
+
+        void dispatch_kernel(void* pipeline, void* encoder, size_t threads_x, size_t threads_y, size_t threads_z) {
+            auto* pso = static_cast<MTL::ComputePipelineState*>(pipeline);
+            auto* enc = static_cast<MTL::ComputeCommandEncoder*>(encoder);
+            
+            enc->setComputePipelineState(pso);
+
+            MTL::Size grid_size = MTL::Size(threads_x, threads_y, threads_z);
+
+            NS::UInteger max_threads = pso->maxTotalThreadsPerThreadgroup();
+            NS::UInteger threadgp_width = std::min(max_threads, (NS::UInteger)threads_x);
+
+            MTL::Size threadgp_size = MTL::Size(threadgp_width, 1, 1);
+
+            enc->dispatchThreads(grid_size, threadgp_size);
+        }
+
     }
 
     void Tensor::to_metal() {
-        data = MetalManager::upload(data, size_bytes);
+        MTL::Buffer* metal_buffer = static_cast<MTL::Buffer*>(MetalManager::upload(data, size_bytes));
+        data = static_cast<void*>(metal_buffer);
     }
 
     void Tensor::from_metal() {
@@ -117,13 +237,5 @@
         buffer_from_metal(active_experts_scores);
         buffer_from_metal(active_experts_weights);
         buffer_from_metal(logits);
-    }
-
-#else
-    // stub
-    namespace MetalManager {
-        void init() {}
-        void* upload(void* data, size_t size) { return nullptr; }
-        void release(void* metal_buffer) {}
     }
 #endif

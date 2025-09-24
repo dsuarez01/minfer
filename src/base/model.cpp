@@ -22,31 +22,56 @@ void BaseModel::append_layer(std::unique_ptr<BaseLayer> layer) {
 }
 
 void BaseModel::forward(std::shared_ptr<RunState> run_state) {
-    for (auto& layer : _layers) {
-        layer->forward(run_state);
+    switch (get_device()) {
+        case DeviceType::CPU: {
+            for (auto& layer : _layers) {
+                layer->forward(run_state);
+            }
+            break;
+        }
+
+        case DeviceType::METAL: {
+            MetalManager::begin_frame();
+
+            for (auto& layer : _layers) {
+                layer->forward(run_state);
+            }
+
+            MetalManager::end_frame();
+            break;
+        }
+
+        default: assert(false && "Forward pass on this device not supported"); break;
     }
+    
 }
 
 void BaseModel::set_device(DeviceType target_device) {
-    if (this->_device == target_device) return;
 
+    if (get_device() == target_device) return;
+    
+    if (get_device() != DeviceType::CPU && get_device() != DeviceType::METAL) {
+        assert(false && "Unsupported source device");
+    }
+
+    if (target_device != DeviceType::CPU && target_device != DeviceType::METAL) {
+        assert(false && "Unsupported target device");
+    }
+
+    // init Metal interface if first CPU->GPU transfer
     if (target_device == DeviceType::METAL) {
-        #if defined(USE_METAL)
-            static bool first = true;
-            if (first) {
-                MetalManager::init();
-                first = false;
-            }
-        #else
-            std::cerr << "Metal backend currently unavailable, transfer failed. Device of model unchanged." << std::endl;
-            return;
-        #endif
+        static bool first = true;
+        if (first) {
+            MetalManager::init();
+            first = false;
+        }
     }
 
     for (auto& layer : _layers) {
         layer->set_device(target_device);
     }
-    run_state->set_device(target_device); // move buffers to device
+    run_state->set_device(target_device);
+    
     this->_device = target_device;
 }
 

@@ -22,10 +22,13 @@ int main(int argc, char** argv) {
         42        // seed
     );
 
+    std::cout << "Loading model" << std::endl;
     Qwen3Model test(gguf_path, run_params);
     
     // test: CPU -> GPU -> CPU
+    std::cout << "CPU->GPU" << std::endl;
     test.set_device(DeviceType::METAL);
+    std::cout << "GPU->CPU" << std::endl;
     test.set_device(DeviceType::CPU);
     
     return 0;

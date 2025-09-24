@@ -17,6 +17,9 @@ public:
 private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, int token_id);
+
+    template <typename WeightType, typename Tag>
+    void metal_forward(float* x_out, int token_id);
 };
 
 class Qwen3LMHead : public Linear {
@@ -31,6 +34,9 @@ public:
 private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, const float* x_in);
+
+    template <typename WeightType, typename Tag>
+    void metal_forward(float* x_out, const float* x_in);
 };
 
 class Qwen3FinalRMSNorm : public RMSNorm {
@@ -45,6 +51,9 @@ public:
 private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, float* x_in);
+
+    template <typename WeightType, typename Tag>
+    void metal_forward(float* x_out, float* x_in);
 };
 
 class Qwen3GQA : public GQA {
@@ -69,6 +78,15 @@ private:
         float* k_cache, float* v_cache,
         int cur_pos
     );
+
+    template <typename WeightType, typename Tag>
+    void metal_forward(
+        float* x_in, float* x_norm, 
+        float* att_out_buf, float* att_scores_buf, 
+        float* q_buf, float* k_buf, float* v_buf, 
+        float* k_cache, float* v_cache,
+        int cur_pos
+    );
 };
 
 class Qwen3MoE : public MoE {
@@ -84,6 +102,14 @@ public:
 private:
     template <typename WeightType, typename Tag>
     void cpu_forward(
+        float* x_in, float* x_norm,
+        float* exp_buf, float* gate_buf, float* up_buf,
+        int* active_experts, float* active_experts_scores, 
+        float* active_experts_weights, float* moe_scores
+    );
+
+    template <typename WeightType, typename Tag>
+    void metal_forward(
         float* x_in, float* x_norm,
         float* exp_buf, float* gate_buf, float* up_buf,
         int* active_experts, float* active_experts_scores, 

@@ -20,6 +20,8 @@ if(APPLE AND METAL_FRAMEWORK)
 
     target_sources(minfer PRIVATE config/metal_config.mm)
 
+    target_include_directories(minfer PRIVATE ${CMAKE_SOURCE_DIR}/include/extern/Metal/Metal.hpp)
+
     find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
     find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
     target_link_libraries(minfer PRIVATE
