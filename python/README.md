@@ -14,7 +14,7 @@ uv sync
 
 # run from project root
 cd ..
-uv run python/gpt2_convert.py <path_to_gguf_file>
+uv run --project ./python python/gpt2_convert.py <path_to_gguf_file>
 ```
 
 The new GGUF file with the modified tokenizer data will replace the GGUF file located at `<path_to_gguf_file>`. As a quick check for correctness, run the tokenizer test on the modified GGUF file via `./build/tests/<model_name>/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.

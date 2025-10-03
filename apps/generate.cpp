@@ -10,7 +10,7 @@
 void print_usage(const char* program_name) {
     std::cout << "Usage: " << program_name << " [-h] <model_path> [OPTIONS]\n\n";
     std::cout << "Required arguments:\n";
-    std::cout << "  <model_path>           Path to model file\n";
+    std::cout << "  -d, --device <name>    Device to use: 'cpu' or 'metal' (default: cpu)\n";
     std::cout << "  -p, --prompt <text>    Input prompt text\n";
     std::cout << "  -m, --max-len <int>    Maximum sequence length\n";
     std::cout << "  -s, --seed <int>       Random seed\n";
@@ -28,6 +28,7 @@ struct Args {
     size_t max_seq_len = 0;
     size_t num_iters = 0;
     int seed = 0;
+    DeviceType device = DeviceType::CPU;
     bool thinking_mode = false;
     bool instruct_mode = false;
     bool help = false;
@@ -67,6 +68,19 @@ Args parse_args(int argc, char* argv[]) {
         
         if (arg == "-h" || arg == "--help") {
             args.help = true;
+        }
+        else if (arg == "-d" || arg == "--device") {
+            std::string val = get_next_arg();
+            if (!val.empty()) {
+                if (val == "cpu" || val == "CPU") {
+                    args.device = DeviceType::CPU;
+                } else if (val == "metal" || val == "METAL") {
+                    args.device = DeviceType::METAL;
+                } else {
+                    args.valid = false;
+                    args.error = "Invalid device: " + val + " (use 'cpu' or 'metal')";
+                }
+            }
         }
         else if (arg == "-p" || arg == "--prompt") {
             args.prompt = get_next_arg();
@@ -191,19 +205,22 @@ int main(int argc, char* argv[]) {
         top_k = 20;
     }
     
-    std::cout << "Model: " << args.filepath << "\n";
-    std::cout << "Prompt: " << args.prompt << "\n";
-    std::cout << "Mode: " << (args.thinking_mode ? "thinking" : "instruct") << "\n";
-    std::cout << "Max seq. length: " << args.max_seq_len << "\n";
-    std::cout << "Seed: " << args.seed << "\n";
-    std::cout << "Temperature: " << temperature << "\n";
-    std::cout << "Top-p: " << top_p << "\n";
-    std::cout << "Top-k: " << top_k << "\n";
-    std::cout << "Min-p: " << min_p << "\n";
-    std::cout << "Presence penalty: " << penalty_pres << "\n\n";
+    std::cout << "Model: " << args.filepath << std::endl;
+    std::cout << "Device: " << device_to_str(args.device) << std::endl;
+    std::cout << "Prompt: " << args.prompt << std::endl;
+    std::cout << "Mode: " << (args.thinking_mode ? "thinking" : "instruct") << std::endl;
+    std::cout << "Max seq. length: " << args.max_seq_len << std::endl;
+    std::cout << "Seed: " << args.seed << std::endl;
+    std::cout << "Temperature: " << temperature << std::endl;
+    std::cout << "Top-p: " << top_p << std::endl;
+    std::cout << "Top-k: " << top_k << std::endl;
+    std::cout << "Min-p: " << min_p << std::endl;
+    std::cout << "Presence penalty: " << penalty_pres << std::endl;
+    std::cout << std::endl;
     
     RunParams run_params(args.num_iters, args.max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, args.seed);
     Qwen3Model test(args.filepath, run_params);
+    test.set_device(args.device);
     test.generate(args.prompt);
     
     return 0;

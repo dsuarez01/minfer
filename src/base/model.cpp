@@ -132,7 +132,12 @@ void BaseModel::generate(std::string& input_text) {
     // GENERATION
     while (generated < num_iters) {
 
-        uint32_t next_token = sampler->sample(run_state->logits.get());
+        float* logits_ptr = (get_device() == DeviceType::METAL) 
+            ? static_cast<float*>(MetalManager::buf_contents(run_state->logits.get()))
+            : run_state->logits.get();
+
+        uint32_t next_token = sampler->sample(logits_ptr);
+
         sampler->add_token(next_token); // for presence penalty
         tokens.push_back(next_token);
         std::cout << tokenizer->decode_token(next_token) << std::flush;
@@ -211,6 +216,7 @@ void BaseModel::benchmark() {
     stats->throughput = 128/throughput_time;
 
     // total mem reads (an overestimate because lm_head weights aren't read when compute_logits is false)
+    // TO-DO: fix mem bandwidth calc if needed
     size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
     
     stats->bandwidth = total_bytes / 1e9 / (throughput_time+prefill_time); // mem bandwidth in GB/sec

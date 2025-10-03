@@ -1,5 +1,6 @@
 #include "minfer/models/qwen3/module.hpp"
 #include "minfer/ops/cpu_ops.hpp"
+#include "minfer/config/metal_config.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -36,7 +37,7 @@ Qwen3Embed::Qwen3Embed(
 }
 
 void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
-    // Device dispatch (GPU case not implemented yet)
+    // device dispatch (GPU case not implemented yet)
     if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3Embed::cpu_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
@@ -47,8 +48,8 @@ void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
     } else if (get_device() == DeviceType::METAL) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3Embed::metal_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
-            case DataType::F16: Qwen3Embed::metal_forward<fp16_t, fp16_tag>(run_state->x.get(), run_state->token_id); break;
-            case DataType::BF16: Qwen3Embed::metal_forward<bf16_t, bf16_tag>(run_state->x.get(), run_state->token_id); break;
+            // case DataType::F16: Qwen3Embed::metal_forward<fp16_t, fp16_tag>(run_state->x.get(), run_state->token_id); break;
+            // case DataType::BF16: Qwen3Embed::metal_forward<bf16_t, bf16_tag>(run_state->x.get(), run_state->token_id); break;
             default: assert(false && "Qwen3Embed has invalid or unsupported qdtype"); break;
         }
     } else {
@@ -66,13 +67,15 @@ void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
 
 template <typename WeightType, typename Tag>
 void Qwen3Embed::metal_forward(float* x_out, int token_id) {
-    // auto* encoder = MetalManager::get_compute_encoder();
 
-    // // create pipeline on first use
-    // static auto* pipeline = MetalManager::create_pipeline(/* embed_src */, "embed_kernel");
-
-    // MetalManager::dispatch_kernel(/* TBD */);
-    return;
+    int token_offset = token_id*d_model;
+    
+    MetalManager::dispatch1d(
+        "embed",
+        d_model / 32, 32,
+        &token_offset, sizeof(int),
+        (void*[]){x_out, weight->data}, 2
+    );
 }
 
 // === LM HEAD ===
@@ -97,8 +100,8 @@ void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
         } else if (get_device() == DeviceType::METAL) {
             switch (get_qdtype()) {
                 case DataType::F32: Qwen3LMHead::metal_forward<float, float_tag>(run_state->logits.get(), run_state->x.get()); break;
-                case DataType::F16: Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(run_state->logits.get(), run_state->x.get()); break;
-                case DataType::BF16: Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(run_state->logits.get(), run_state->x.get()); break;
+                // case DataType::F16: Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(run_state->logits.get(), run_state->x.get()); break;
+                // case DataType::BF16: Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(run_state->logits.get(), run_state->x.get()); break;
                 default: assert(false && "Qwen3LMHead has invalid or unsupported qdtype"); break;
             }
         } else {
@@ -119,13 +122,23 @@ void Qwen3LMHead::cpu_forward(float* x_out, const float* x_in) {
 
 template <typename WeightType, typename Tag>
 void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
-    // auto* encoder = MetalManager::get_compute_encoder();
 
-    // // create pipeline on first use
-    // static auto* pipeline = MetalManager::create_pipeline(/* linear_src */, "linear_kernel");
-
-    // MetalManager::dispatch_kernel(/* TBD */);
-    return;
+    MetalManager::dispatch1d(
+        "linear_proj",
+        d_out, 32,
+        &d_in, sizeof(int),
+        (void*[]){weight->data, const_cast<float*>(x_in), x_out}, 3
+    );
+    
+    if (bias) {
+        size_t n_thrgps = (d_out+1023) / 1024;
+        MetalManager::dispatch1d(
+            "resadd",
+            n_thrgps, 1024,
+            nullptr, 0,
+            (void*[]){x_out, bias->data}, 2
+        );
+    }
 }
 
 // === FINAL RMS NORM ===
@@ -140,7 +153,6 @@ Qwen3FinalRMSNorm::Qwen3FinalRMSNorm(
 }
 
 void Qwen3FinalRMSNorm::forward(std::shared_ptr<RunState> run_state) {
-    // Device dispatch (GPU case not implemented yet)
     if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3FinalRMSNorm::cpu_forward<float, float_tag>(run_state->x.get(), run_state->x.get()); break;
@@ -163,13 +175,15 @@ void Qwen3FinalRMSNorm::cpu_forward(float* x_out, float* x_in) {
 
 template <typename WeightType, typename Tag>
 void Qwen3FinalRMSNorm::metal_forward(float* x_out, float* x_in) {
-    // auto* encoder = MetalManager::get_compute_encoder();
-
-    // // create pipeline on first use
-    // static auto* pipeline = MetalManager::create_pipeline(/* rms_src */, "rms_kernel");
-
-    // MetalManager::dispatch_kernel(/* TBD */);
-    return;
+    
+    struct { int dim; float eps; int stride; } params = {dim, eps, 0};
+    
+    MetalManager::dispatch1d(
+        "rmsnorm",
+        1, 1024,
+        &params, sizeof(params),
+        (void*[]){weight->data, x_in, x_out}, 3
+    );
 }
 
 // === GQA ===
@@ -228,7 +242,7 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
         
     } else if (get_device() == DeviceType::METAL) {
         switch (get_qdtype()) {
-            case DataType::F32: Qwen3GQA::cpu_forward<float, float_tag>(
+            case DataType::F32: Qwen3GQA::metal_forward<float, float_tag>(
                 run_state->x.get(), run_state->xb.get(), 
                 run_state->att_out.get(), run_state->att_scores.get(),
                 run_state->q.get(), run_state->k.get(), run_state->v.get(),
@@ -236,21 +250,21 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
                 run_state->cur_pos
             ); break;
 
-            case DataType::F16: Qwen3GQA::cpu_forward<fp16_t, fp16_tag>(
-                run_state->x.get(), run_state->xb.get(), 
-                run_state->att_out.get(), run_state->att_scores.get(),
-                run_state->q.get(), run_state->k.get(), run_state->v.get(),
-                run_state->k_cache.get(), run_state->v_cache.get(),
-                run_state->cur_pos
-            ); break;
+            // case DataType::F16: Qwen3GQA::metal_forward<fp16_t, fp16_tag>(
+            //     run_state->x.get(), run_state->xb.get(), 
+            //     run_state->att_out.get(), run_state->att_scores.get(),
+            //     run_state->q.get(), run_state->k.get(), run_state->v.get(),
+            //     run_state->k_cache.get(), run_state->v_cache.get(),
+            //     run_state->cur_pos
+            // ); break;
 
-            case DataType::BF16: Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(
-                run_state->x.get(), run_state->xb.get(), 
-                run_state->att_out.get(), run_state->att_scores.get(),
-                run_state->q.get(), run_state->k.get(), run_state->v.get(),
-                run_state->k_cache.get(), run_state->v_cache.get(),
-                run_state->cur_pos
-            ); break;
+            // case DataType::BF16: Qwen3GQA::metal_forward<bf16_t, bf16_tag>(
+            //     run_state->x.get(), run_state->xb.get(), 
+            //     run_state->att_out.get(), run_state->att_scores.get(),
+            //     run_state->q.get(), run_state->k.get(), run_state->v.get(),
+            //     run_state->k_cache.get(), run_state->v_cache.get(),
+            //     run_state->cur_pos
+            // ); break;
 
             default: assert(false && "Qwen3GQA has invalid or unsupported qdtype"); break;
         }
@@ -326,13 +340,144 @@ void Qwen3GQA::metal_forward(
     float* k_cache, float* v_cache,
     int cur_pos
 ) {
-    // auto* encoder = MetalManager::get_compute_encoder();
+    
+    int q_dim = n_heads * d_head;
+    int kv_dim = n_kv_heads * d_head;
+    int kv_len = cur_pos + 1;
+    int heads_per_kv = n_heads / n_kv_heads;
+    
+    // 1. pre-RMSNorm
+    struct { int dim; float eps; int stride; } norm_params = {d_model, eps, 0};
+    MetalManager::dispatch1d(
+        "rmsnorm",
+        1, 1024,
+        &norm_params, sizeof(norm_params),
+        (void*[]){w_attnnorm->data, x_in, x_norm}, 3
+    );
 
-    // // create pipeline on first use
-    // static auto* pipeline = MetalManager::create_pipeline(/* gqa_src */, "gqa_kernel");
+    // 2-4. QKV projs
+    MetalManager::dispatch1d(
+        "linear_proj",
+        q_dim, 32,
+        &d_model, sizeof(int),
+        (void*[]){wq->data, x_norm, q_buf}, 3
+    );
+    
+    MetalManager::dispatch1d(
+        "linear_proj",
+        kv_dim, 32,
+        &d_model, sizeof(int),
+        (void*[]){wk->data, x_norm, k_buf}, 3
+    );
+    
+    MetalManager::dispatch1d(
+        "linear_proj",
+        kv_dim, 32,
+        &d_model, sizeof(int),
+        (void*[]){wv->data, x_norm, v_buf}, 3
+    );
 
-    // MetalManager::dispatch_kernel(/* TBD */);
-    return;
+    // 5-6. rmsnorm across heads for Q,K
+    struct { int dim; float eps; int stride; } head_norm = {d_head, eps, d_head};
+    MetalManager::dispatch1d(
+        "rmsnorm",
+        n_heads, 1024,
+        &head_norm, sizeof(head_norm),
+        (void*[]){wq_norm->data, q_buf, q_buf}, 3
+    );
+    
+    MetalManager::dispatch1d(
+        "rmsnorm",
+        n_kv_heads, 1024,
+        &head_norm, sizeof(head_norm),
+        (void*[]){wk_norm->data, k_buf, k_buf}, 3
+    );
+
+    // 7-8. RoPE
+
+    // 7. RoPE on Q
+    struct { int d_rotary; int d_head; float freq_base; int pos; } rope_params = {d_rotary, d_head, freq_base, cur_pos};
+    size_t rope_thrgps = (d_rotary/2 + 31) / 32;
+    
+    MetalManager::dispatch2d(
+        "neox_rope",
+        rope_thrgps, n_heads,  // X=pair thrgps, Y=heads
+        32,
+        &rope_params, sizeof(rope_params),
+        (void*[]){q_buf}, 1
+    );
+
+    // 8. RoPE on K
+    MetalManager::dispatch2d(
+        "neox_rope",
+        rope_thrgps, n_kv_heads,  // Y = n_kv_heads instead
+        32,
+        &rope_params, sizeof(rope_params),
+        (void*[]){k_buf}, 1
+    );
+
+    // 9. writing to K,V caches
+    struct { int layer_idx; int cur_pos; int seq_len; int n_kv_heads; int d_head; } cache_params = {
+        block_idx, cur_pos, (int)max_seq_len, n_kv_heads, d_head
+    };
+    size_t cache_thrgps = (kv_dim+1023) / 1024;
+    MetalManager::dispatch1d(
+        "write_kv_cache",
+        cache_thrgps, 1024,
+        &cache_params, sizeof(cache_params),
+        (void*[]){k_buf, v_buf, k_cache, v_cache}, 4
+    );
+
+    // 10-12. attn scoring, mixing
+    struct { int d_head; int kv_dim; int kv_mul; int kv_len; int seq_len; size_t loff; } score_params = {
+        d_head, kv_dim, heads_per_kv, kv_len, (int)max_seq_len, block_idx * max_seq_len * kv_dim
+    };
+
+    MetalManager::dispatch2d(
+        "attn_score",
+        kv_len, n_heads,  // X=posns, Y=heads
+        32,
+        &score_params, sizeof(score_params),
+        (void*[]){q_buf, k_cache, att_scores_buf}, 3
+    );
+
+    // softmax
+    struct { int dim; int stride; } softmax_params = {kv_len, (int)max_seq_len};
+    MetalManager::dispatch1d(
+        "softmax",
+        n_heads, 1024,
+        &softmax_params, sizeof(softmax_params),
+        (void*[]){att_scores_buf}, 1
+    );
+
+    // attn mixing
+    struct { int seq_len; int kv_len; int d_head; int kv_dim; int kv_mul; size_t loff; } out_params = {
+        (int)max_seq_len, kv_len, d_head, kv_dim, heads_per_kv, block_idx * max_seq_len * kv_dim
+    };
+    MetalManager::dispatch2d(
+        "attn_out",
+        d_head, n_heads,  // X=head dim, Y=heads
+        32,
+        &out_params, sizeof(out_params),
+        (void*[]){att_scores_buf, v_cache, att_out_buf}, 3
+    );
+
+    // 13. output proj
+    MetalManager::dispatch1d(
+        "linear_proj",
+        d_model, 32,
+        &q_dim, sizeof(int),
+        (void*[]){wo->data, att_out_buf, x_norm}, 3
+    );
+
+    // 14. residual
+    size_t res_thrgps = (d_model+1023) / 1024;
+    MetalManager::dispatch1d(
+        "resadd",
+        res_thrgps, 1024,
+        nullptr, 0,
+        (void*[]){x_in, x_norm}, 2
+    );
 }
 
 // === MOE ===
@@ -392,19 +537,19 @@ void Qwen3MoE::forward(std::shared_ptr<RunState> run_state) {
                 run_state->active_experts_weights.get(), run_state->moe_scores.get()
             ); break;
 
-            case DataType::F16: Qwen3MoE::metal_forward<fp16_t, fp16_tag>(
-                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-                run_state->hb.get(), run_state->hb2.get(),
-                run_state->active_experts.get(), run_state->active_experts_scores.get(),
-                run_state->active_experts_weights.get(), run_state->moe_scores.get()
-            ); break;
+            // case DataType::F16: Qwen3MoE::metal_forward<fp16_t, fp16_tag>(
+            //     run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
+            //     run_state->hb.get(), run_state->hb2.get(),
+            //     run_state->active_experts.get(), run_state->active_experts_scores.get(),
+            //     run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            // ); break;
 
-            case DataType::BF16: Qwen3MoE::metal_forward<bf16_t, bf16_tag>(
-                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-                run_state->hb.get(), run_state->hb2.get(),
-                run_state->active_experts.get(), run_state->active_experts_scores.get(),
-                run_state->active_experts_weights.get(), run_state->moe_scores.get()
-            ); break;
+            // case DataType::BF16: Qwen3MoE::metal_forward<bf16_t, bf16_tag>(
+            //     run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
+            //     run_state->hb.get(), run_state->hb2.get(),
+            //     run_state->active_experts.get(), run_state->active_experts_scores.get(),
+            //     run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            // ); break;
 
             default: assert(false && "Qwen3MoE has invalid or unsupported qdtype"); break;
         }
@@ -457,17 +602,106 @@ void Qwen3MoE::metal_forward(
     int* active_experts, float* active_experts_scores, 
     float* active_experts_weights, float* moe_scores
 ) {
-    // auto* encoder = MetalManager::get_compute_encoder();
 
-    // // create pipeline on first use
-    // static auto* pipeline = MetalManager::create_pipeline(/* moe_src */, "moe_kernel");
+    // 1. rmsnorm
+    struct { int dim; float eps; int stride; } norm_params = {d_model, eps, 0};
+    MetalManager::dispatch1d(
+        "rmsnorm",
+        1, 1024,
+        &norm_params, sizeof(norm_params),
+        (void*[]){w_moenorm->data, x_in, x_norm}, 3
+    );
 
-    // MetalManager::dispatch_kernel(/* to be determined */);
-    return;
+    // workaround for non-moe models
+    if (n_experts == 0) {
+        active_experts[0] = 0;
+        active_experts_weights[0] = 1.0f;
+    } else {
+        // 2. router
+        MetalManager::dispatch1d(
+            "linear_proj",
+            n_experts, 32,
+            &d_model, sizeof(int),
+            (void*[]){w_router->data, x_norm, moe_scores}, 3
+        );
+
+        // 3. top-k
+        struct { int n_experts; int k; } topk_params = {n_experts, n_active_experts};
+        MetalManager::dispatch1d(
+            "moe_topk",
+            1, 32,
+            &topk_params, sizeof(topk_params),
+            (void*[]){moe_scores, active_experts, active_experts_scores}, 3
+        );
+
+        // 4. softmax on scores
+        struct { int dim; int stride; } softmax_params = {n_active_experts, 0};
+        MetalManager::dispatch1d(
+            "softmax",
+            1, 1024,
+            &softmax_params, sizeof(softmax_params),
+            (void*[]){active_experts_scores}, 1
+        );
+        
+        // copy to weights (TO-DO: fix?)
+        for (int i=0; i<n_active_experts; ++i) {
+            active_experts_weights[i] = active_experts_scores[i];
+        }
+    }
+
+    // 5. process experts
+    int n = (n_experts > 0 ? n_active_experts : 1);
+    for (int i = 0; i < n; ++i) {
+        int expert_idx = active_experts[i];
+        size_t gate_offset = expert_idx*d_ff*d_model * sizeof(WeightType);
+        size_t down_offset = expert_idx*d_model*d_ff * sizeof(WeightType);
+
+        // gate proj
+        MetalManager::dispatch1d(
+            "linear_proj",
+            d_ff, 32,
+            &d_model, sizeof(int),
+            (void*[]){(char*)ws_gate->data + gate_offset, x_norm, gate_buf}, 3
+        );
+
+        // up proj
+        MetalManager::dispatch1d(
+            "linear_proj",
+            d_ff, 32,
+            &d_model, sizeof(int),
+            (void*[]){(char*)ws_up->data + gate_offset, x_norm, up_buf}, 3
+        );
+
+        // silu+mul
+        size_t silu_thrgps = (d_ff+1023) / 1024;
+        MetalManager::dispatch1d(
+            "silu_mul",
+            silu_thrgps, 1024,
+            nullptr, 0,
+            (void*[]){gate_buf, up_buf}, 2
+        );
+
+        // down proj
+        MetalManager::dispatch1d(
+            "linear_proj",
+            d_model, 32,
+            &d_ff, sizeof(int),
+            (void*[]){(char*)ws_down->data + down_offset, gate_buf, exp_buf}, 3
+        );
+
+        // weighted resadd
+        float weight = active_experts_weights[i];
+        size_t res_thrgps = (d_model+1023) / 1024;
+        MetalManager::dispatch1d(
+            "weight_resadd",
+            res_thrgps, 1024,
+            &weight, sizeof(float),
+            (void*[]){x_in, exp_buf}, 2
+        );
+    }
 }
 
 // explicit instantiations
-
 // CPU
 template void Qwen3Embed::cpu_forward<float, float_tag>(float*, int);
 template void Qwen3Embed::cpu_forward<fp16_t, fp16_tag>(float*, int);
@@ -489,19 +723,19 @@ template void Qwen3MoE::cpu_forward<bf16_t, bf16_tag>(float*, float*, float*, fl
 
 // GPU
 template void Qwen3Embed::metal_forward<float, float_tag>(float*, int);
-template void Qwen3Embed::metal_forward<fp16_t, fp16_tag>(float*, int);
-template void Qwen3Embed::metal_forward<bf16_t, bf16_tag>(float*, int);
+// template void Qwen3Embed::metal_forward<fp16_t, fp16_tag>(float*, int);
+// template void Qwen3Embed::metal_forward<bf16_t, bf16_tag>(float*, int);
 
 template void Qwen3LMHead::metal_forward<float, float_tag>(float*, const float*);
-template void Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(float*, const float*);
-template void Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(float*, const float*);
+// template void Qwen3LMHead::metal_forward<fp16_t, fp16_tag>(float*, const float*);
+// template void Qwen3LMHead::metal_forward<bf16_t, bf16_tag>(float*, const float*);
 
 template void Qwen3FinalRMSNorm::metal_forward<float, float_tag>(float* x_out, float* x_in);
 
 template void Qwen3GQA::metal_forward<float, float_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
-template void Qwen3GQA::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
-template void Qwen3GQA::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
+// template void Qwen3GQA::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
+// template void Qwen3GQA::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
 
 template void Qwen3MoE::metal_forward<float, float_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
-template void Qwen3MoE::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
-template void Qwen3MoE::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
+// template void Qwen3MoE::metal_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
+// template void Qwen3MoE::metal_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);

@@ -13,7 +13,7 @@ endif()
 project(
     minfer 
     VERSION 1.0
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

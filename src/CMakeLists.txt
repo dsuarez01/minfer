@@ -11,7 +11,7 @@ add_library(minfer
     parsing/gguf.cpp
 )
 
-# Auto-detection of Metal and CUDA Backends
+# handles auto-detection of Metal and CUDA Backends
 find_package(CUDAToolkit QUIET)
 find_library(METAL_FRAMEWORK Metal QUIET)
 
@@ -19,6 +19,29 @@ if(APPLE AND METAL_FRAMEWORK)
     target_compile_definitions(minfer PRIVATE USE_METAL)
 
     target_sources(minfer PRIVATE config/metal_config.mm)
+
+    # to precompile the kernels written in MSL
+    set(METAL_SHADER_SOURCE ${CMAKE_SOURCE_DIR}/src/ops/kernels.metal)
+    set(METAL_AIR ${CMAKE_CURRENT_BINARY_DIR}/kernels.air)
+    set(METAL_LIB ${CMAKE_CURRENT_BINARY_DIR}/kernels.metallib)
+    set(METAL_C ${CMAKE_CURRENT_BINARY_DIR}/kernels_metallib.c)
+
+    add_custom_command(
+        OUTPUT ${METAL_C}
+        COMMAND xcrun -sdk macosx metal -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
+        COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
+        COMMAND xxd -i kernels.metallib > ${METAL_C}
+        DEPENDS ${METAL_SHADER_SOURCE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Compiling Metal shaders (kernels) to library"
+    )
+
+    add_custom_target(metal_shaders DEPENDS ${METAL_C})
+    add_dependencies(minfer metal_shaders)
+
+    target_sources(minfer PRIVATE ${METAL_C})
+
+    target_include_directories(minfer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
     target_include_directories(minfer PRIVATE ${CMAKE_SOURCE_DIR}/include/extern/Metal/Metal.hpp)
 
