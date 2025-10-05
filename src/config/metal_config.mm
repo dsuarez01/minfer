@@ -118,14 +118,14 @@
             g_metal_ctx->library.reset(lib);
 
             NS::Array* fcn_names = lib->functionNames();
-            for (size_t i=0; i < fcn_names->count(); ++i) {
+            for (size_t i=0; i<fcn_names->count(); ++i) {
                 NS::String* name = static_cast<NS::String*>(fcn_names->object(i));
                 MTL::Function* fcn = lib->newFunction(name);
                 assert(fcn);
                 
                 MTL::ComputePipelineState* pipeline = g_metal_ctx->device->newComputePipelineState(fcn, &err);
                 assert(pipeline);
-
+                
                 g_metal_ctx->pipelines[name->utf8String()] = 
                     std::unique_ptr<MTL::ComputePipelineState, PipelineDeleter>(pipeline);
                 fcn->release();
@@ -173,7 +173,7 @@
             auto* pipeline = it->second.get();
 
             enc->setComputePipelineState(pipeline);
-            
+
             size_t start_idx = 0; // some kernels don't have a params struct
             if (params && params_size > 0) {
                 enc->setBytes(params, params_size, 0);
@@ -201,9 +201,9 @@
             auto it = g_metal_ctx->pipelines.find(kernel_name);
             assert(it != g_metal_ctx->pipelines.end());
             auto* pipeline = it->second.get();
-            
+
             enc->setComputePipelineState(pipeline);
-            
+
             size_t start_idx = 0; // some kernels don't have a params struct
             if (params && params_size > 0) {
                 enc->setBytes(params, params_size, 0);

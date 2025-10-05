@@ -18,7 +18,6 @@ private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, int token_id);
 
-    template <typename WeightType, typename Tag>
     void metal_forward(float* x_out, int token_id);
 };
 
@@ -35,7 +34,6 @@ private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, const float* x_in);
 
-    template <typename WeightType, typename Tag>
     void metal_forward(float* x_out, const float* x_in);
 };
 
@@ -52,7 +50,6 @@ private:
     template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, float* x_in);
 
-    template <typename WeightType, typename Tag>
     void metal_forward(float* x_out, float* x_in);
 };
 
@@ -79,7 +76,6 @@ private:
         int cur_pos
     );
 
-    template <typename WeightType, typename Tag>
     void metal_forward(
         float* x_in, float* x_norm, 
         float* att_out_buf, float* att_scores_buf, 
@@ -108,7 +104,6 @@ private:
         float* active_experts_weights, float* moe_scores
     );
 
-    template <typename WeightType, typename Tag>
     void metal_forward(
         float* x_in, float* x_norm,
         float* exp_buf, float* gate_buf, float* up_buf,

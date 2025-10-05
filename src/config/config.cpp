@@ -94,6 +94,15 @@ std::string device_to_str(DeviceType device) {
     }
 }
 
+std::string dtype_kernel_suffix(DataType dtype) {
+    switch(dtype) {
+        case DataType::F32: return "_f32";
+        case DataType::F16: return "_f16";
+        case DataType::BF16: return "_bf16";
+        default: return "_f32";
+    }
+}
+
 DataType tensor_to_data_type(TensorType t_type) {
     switch (t_type) {
         case TensorType::F32: return DataType::F32;

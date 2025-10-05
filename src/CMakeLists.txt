@@ -28,8 +28,8 @@ if(APPLE AND METAL_FRAMEWORK)
 
     add_custom_command(
         OUTPUT ${METAL_C}
-        COMMAND xcrun -sdk macosx metal -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
-        COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
+        COMMAND xcrun metal -std=metal3.2 -fmetal-enable-logging -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
+        COMMAND xcrun metallib ${METAL_AIR} -o ${METAL_LIB}
         COMMAND xxd -i kernels.metallib > ${METAL_C}
         DEPENDS ${METAL_SHADER_SOURCE}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -42,15 +42,17 @@ if(APPLE AND METAL_FRAMEWORK)
     target_sources(minfer PRIVATE ${METAL_C})
 
     target_include_directories(minfer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
     target_include_directories(minfer PRIVATE ${CMAKE_SOURCE_DIR}/include/extern/Metal/Metal.hpp)
 
     find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
     find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(METALKIT_FRAMEWORK MetalKit REQUIRED)
+
     target_link_libraries(minfer PRIVATE
         ${METAL_FRAMEWORK}
         ${FOUNDATION_FRAMEWORK}
         ${QUARTZCORE_FRAMEWORK}
+        ${METALKIT_FRAMEWORK}
     )
 
     message(STATUS "Using Metal backend")

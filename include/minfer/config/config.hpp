@@ -138,3 +138,4 @@ size_t dtype_size(DataType dtype);
 std::string dtype_to_str(DataType dtype);
 DataType str_to_dtype(std::string& dtype_str);
 std::string device_to_str(DeviceType device);
+std::string dtype_kernel_suffix(DataType dtype);

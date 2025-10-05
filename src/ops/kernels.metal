@@ -78,8 +78,9 @@ inline float blockreduce_sum(threadgroup float* vs, float val, uint id) {
 }
 
 // if weight is 1D i.e. vec-vec dotprod, always pass in row_idx = 0
+template<typename WeightT>
 inline float matmul_row(
-    const device float* weight,
+    const device WeightT* weight,
     const device float* x_in,
     uint row_idx,
     uint d_in,
@@ -87,10 +88,14 @@ inline float matmul_row(
 ) {
     int lane = tid%32;
     float val = 0.0f;
-    for (uint j=lane*2; j<d_in; j+=32*2) {
-        float2 w = *(device float2*)&weight[row_idx*d_in + j];
-        float2 x = *(device float2*)&x_in[j];
-        val += w.x*x.x + w.y*x.y;
+    for (uint j=lane*4; j<d_in; j+=32*4) {
+        vec<WeightT, 4> w = *(device vec<WeightT, 4>*)&weight[row_idx*d_in + j];
+        float4 x = *(device float4*)&x_in[j];
+        
+        val += float(w[0]) * x[0];
+        val += float(w[1]) * x[1];
+        val += float(w[2]) * x[2];
+        val += float(w[3]) * x[3];
     }
     return simd_sum(val);
 }
@@ -135,9 +140,10 @@ kernel void weight_resadd(
 }
 
 // d_out threadgroups, 32 threads each
+template<typename WeightT>
 kernel void linear_proj(
     constant int& d_in [[ buffer(0) ]],
-    const device float* weight [[ buffer(1) ]],
+    const device WeightT* weight [[ buffer(1) ]],
     const device float* x_in [[ buffer(2) ]],
     device float* x_out [[ buffer(3) ]],
     uint tid [[ thread_position_in_threadgroup ]],
@@ -147,13 +153,14 @@ kernel void linear_proj(
 }
 
 // spawn d_model threads for this
+template<typename WeightT>
 kernel void embed(
     constant int& token_offset [[ buffer(0) ]],
     device float* out [[ buffer(1) ]],
-    const device float* weight [[ buffer(2) ]],
+    const device WeightT* weight [[ buffer(2) ]],
     uint tid [[ thread_position_in_grid ]]
 ) {
-    out[tid] = weight[token_offset + tid];
+    out[tid] = float(weight[token_offset + tid]);
 }
 
 // n_heads thrgp of 1024 threads each for per-head norms
@@ -382,3 +389,11 @@ kernel void moe_topk(
         }
     }
 }
+
+template [[host_name("embed_f32")]] kernel void embed<float>(constant int&, device float*, const device float*, uint);
+template [[host_name("embed_f16")]] kernel void embed<half>(constant int&, device float*, const device half*, uint);
+template [[host_name("embed_bf16")]] kernel void embed<bfloat>(constant int&, device float*, const device bfloat*, uint);
+
+template [[host_name("linear_proj_f32")]] kernel void linear_proj<float>(constant int&, const device float*, const device float*, device float*, uint, uint);
+template [[host_name("linear_proj_f16")]] kernel void linear_proj<half>(constant int&, const device half*, const device float*, device float*, uint, uint);
+template [[host_name("linear_proj_bf16")]] kernel void linear_proj<bfloat>(constant int&, const device bfloat*, const device float*, device float*, uint, uint);
