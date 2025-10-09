@@ -3,24 +3,18 @@
 
 ## Table of Contents
 
-* [**Overview**](#overview)
+- [**Overview**](#overview)
     - [Recommended System Config](#overview---recommended-system-config)
     - [Precision Support](#overview---precision-support)
     - [Usage Instructions](#overview---usage-instructions)
-
-* [**Benchmark Performance**](#benchmark-performance)
+- [**Benchmark Performance**](#benchmark-performance)
     - [CPU](#performance---cpu-inference-results)
     - [GPU](#performance---gpu-inference-results)
-
-* [**Checklist of Improvements**](#checklist-of-improvements)
-
-* [**External Dependencies**](#external-dependencies)
-
-* [**Acknowledgments**](#acknowledgments)
-
-* [**Disclaimer**](#disclaimer)
-
-* [**Additional Remarks**](#additional-remarks)
+- [**Checklist of Improvements**](#checklist-of-improvements)
+- [**External Dependencies**](#external-dependencies)
+- [**Acknowledgments**](#acknowledgments)
+- [**Disclaimer**](#disclaimer)
+- [**Additional Remarks**](#additional-remarks)
     - [CPU](#remarks---cpu-inference)
     - [GPU](#remarks---gpu-inference)
 
@@ -44,7 +38,7 @@ Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia
 | M3 Series                    | Y            | Y            | Y (CPU), Y (GPU, native)   |
 | M4 Series                    | Y            | Y            | Y (CPU), Y (GPU, native)   |
 
-For **CPU support**, I would recommend adjusting the `-march` and `-mtune` flags in `function(apply_arch_flags target_name)` (defined at `./CMakeLists.txt`) to match an ARM Neon version, desired dtype support, and target architecture that is compatible with your system. You'll want to set the flags as follows: `-march=<armv8.X-a>+<fp16 for FP16 support, only supported for armv8.X-a where X>=2>+<bf16 for BF16 support, only supported for armv8.X-a where X>=6>`; `-mtune=<apple-mX>` according to whatever your chip version is (`X=1, X=2, X=3, X=4, etc. as new chips are added`).
+For **CPU support**, I would recommend adjusting the `-march` and `-mtune` flags in `function(apply_arch_flags target_name)` (defined at `./CMakeLists.txt`) to match an ARM Neon version, desired dtype support, and target architecture that is compatible with your system. You'll want to set the flags as follows: `-march=<armv8.X-a>+<fp16 for FP16 support, only supported for armv8.X-a where X>=2>+<bf16 for BF16 support, only supported for armv8.X-a where X>=6>`; `-mtune=<apple-mX>` according to your processor version (`X=1, X=2, X=3, X=4, etc. as new M-series chips are added`).
 
 For **GPU support**, I would recommend keeping Metal 3.2 as the version (see [this link](https://support.apple.com/en-us/102894) for more information about Metal support across M-series chips + OS versions), and adjusting the `-target` flag in `xcrun -sdk macosx metal -std=metal3.2 -target air64-apple-macos26.0 -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}` as needed (see `./src/CMakeLists.txt`). The relevant section of commands here will precompile the shader source file (`./src/ops/kernels.metal`) into a .metallib library, which is then embedded as a byte array into the program for use by the Metal interface (credit: [zeux/calm](https://github.com/zeux/calm)).
 
