@@ -114,11 +114,11 @@ The benchmark consists of a 512-token prefill and 128-token generation phase (re
 
 This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations, and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
 
-|     (M2 Pro CPU, avg of 5 runs)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
-|-------------------------------------|-----------------------------------|----------------------------------|
-| Qwen3-0.6B-FP32                     |               37.5                |           46.52 ± 0.46           |
-| Qwen3-0.6B-BF16                     |               57.2                |              N/A*                |
-| Qwen3-1.7B-BF16                     |               27.0                |              N/A*                |
+|     (M2 Pro CPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
+|------------------------------------------------|-----------------------------------|----------------------------------|
+| Qwen3-0.6B-FP32                                |               37.5                |           46.52 ± 0.46           |
+| Qwen3-0.6B-BF16                                |               57.2                |              N/A*                |
+| Qwen3-1.7B-BF16                                |               27.0                |              N/A*                |
 
 \* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
 
@@ -126,13 +126,13 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 
 ### Performance - GPU Inference Results
 
-|     (M2 Pro GPU, avg of 5 runs)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
-|-------------------------------------|-----------------------------------|----------------------------------|
-| Qwen3-0.6B-BF16                     |                                   |                                  |
-| Qwen3-0.6B-FP16                     |                                   |                                  |
-| Qwen3-0.6B-FP32                     |                                   |                                  |
-| Qwen3-1.7B-BF16                     |                                   |                                  |
-| Qwen3-4B-Instruct-2507-FP16         |                                   |                                  |
+|     (M2 Pro GPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
+|------------------------------------------------|-----------------------------------|----------------------------------|
+| Qwen3-0.6B-BF16                                |              116.46               |            7.80 ± 0.05           |
+| Qwen3-0.6B-FP16                                |              116.80               |            106.75 ± 0.31         |
+| Qwen3-0.6B-FP32                                |              66.50                |            63.47 ± 0.06          |
+| Qwen3-1.7B-BF16                                |              48.33                |            3.01 ± 0.06           |
+| Qwen3-4B-Instruct-2507-FP16                    |              21.04                |            20.57 ± 0.40          |
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models (refer to the [Python script README](./python/README.md#gguf-tokenizer-data-conversion-tool-gpt2_convertpy)) before testing. I would test larger models, but am limited by the RAM available on my GPU: the [recommended max working set size](https://stencel.io/posts/apple-silicon-limitations-with-usage-on-local-llm%20.html) — which functions more as a hard limit on mem. usage, as noted in the article — is 75% of the available physical RAM, so ~12 GB for 16 GB system, ~24GB for a 32 GB system, etc.
 

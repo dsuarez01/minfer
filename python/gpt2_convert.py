@@ -5,7 +5,7 @@ import tempfile
 
 import numpy as np
 
-from gguf import GGUFReader, GGUFWriter, GGUFValueType, GGMLQuantizationType
+from gguf import GGUFReader, GGUFWriter, GGUFValueType, GGMLQuantizationType, ReaderField
 
 # see https://github.com/zeux/calm/blob/main/tools/convert.py
 def create_gpt2_byte_decoder():
@@ -60,6 +60,20 @@ def encode_token(token_bytes: bytes) -> str:
             raise ValueError(f"Byte {byte_val} not found in BYTE_ENCODER")
     
     return ''.join(chars)
+
+# necessary since reader always tries to utf-8 decode the tokens + merges fields
+def get_tokens_or_merges(field : ReaderField) -> list[str] | list[bytes]:
+    """ Safely extract tokens/merges field, handles both string and bytes """
+    if field is None:
+        return None
+    
+    if field.types and field.types[0] == GGUFValueType.ARRAY:
+        try: 
+            return field.contents() # works for GPT-2 strs
+        except UnicodeDecodeError:
+            return [bytes(field.parts[idx]) for idx in field.data] # works for byte obj
+    
+    return field.contents()
 
 def copy_metadata(writer: GGUFWriter, reader: GGUFReader, key: str) -> None:
     """ Copy metadata KV pair from reader to writer """
@@ -139,7 +153,7 @@ def main():
             print("'tokenizer.ggml.tokens' not found in metadata, no changes made")
             return
         
-        tokens = tokens_field.contents()
+        tokens = get_tokens_or_merges(tokens_field)
         print(f"Processing {len(tokens)} tokens...")
         
         if args.encode:
@@ -157,14 +171,14 @@ def main():
             print("'tokenizer.ggml.merges' not found in metadata, no changes made")
             return
         
-        merges = merges_field.contents()
+        merges = get_tokens_or_merges(merges_field)
         print(f"Processing {len(merges)} merges...")
         new_merges = []
         
         if args.encode:
             # bytes -> (GPT-2) strs
             for m in merges:
-                parts = m.split(b" ")
+                parts = m.split(b" ", 1)
                 if len(parts) != 2:
                     raise ValueError(f"Invalid merge format: {m}")
                 p1 = encode_token(parts[0])
@@ -247,6 +261,11 @@ def main():
         output_path = base_name + suffix + ".gguf"
         
         shutil.move(temp_path, output_path)
+
+        # remove orig file if different from output file
+        if output_path != args.gguf_path and os.path.exists(args.gguf_path):
+            os.remove(args.gguf_path)
+        
         action = "encoded" if args.encode else "decoded"
         print(f"Successfully {action} and saved to {output_path}")
         
