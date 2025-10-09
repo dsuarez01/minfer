@@ -3,24 +3,24 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
+* [**Overview**](#overview)
     - [Recommended System Config](#overview---recommended-system-config)
     - [Precision Support](#overview---precision-support)
     - [Usage Instructions](#overview---usage-instructions)
 
-- [Benchmark Performance](#benchmark-performance)
+* [**Benchmark Performance**](#benchmark-performance)
     - [CPU](#performance---cpu-inference-results)
     - [GPU](#performance---gpu-inference-results)
 
-- [Checklist of Improvements](#checklist-of-improvements)
+* [**Checklist of Improvements**](#checklist-of-improvements)
 
-- [External Dependencies](#external-dependencies)
+* [**External Dependencies**](#external-dependencies)
 
-- [Acknowledgments](#acknowledgments)
+* [**Acknowledgments**](#acknowledgments)
 
-- [Disclaimer](#disclaimer)
+* [**Disclaimer**](#disclaimer)
 
-- [Additional Remarks](#additional-remarks)
+* [**Additional Remarks**](#additional-remarks)
     - [CPU](#remarks---cpu-inference)
     - [GPU](#remarks---gpu-inference)
 
