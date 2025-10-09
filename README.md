@@ -21,7 +21,7 @@
 
 ## Overview
 
-### Overview - Recommended System Config.
+### Overview - Recommended System Config
 
 This project currently supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
 
@@ -186,6 +186,6 @@ I found implementing GPU support to be a much simpler process. The GPU is better
 
 In particular, the matmul (see `linear_proj`) is computed via SIMD threadgroups of 32 threads (on my hardware, usually the same for M-series chips) assigned to `matmul_row`, which performs a coalesced access of the weights, loads into 4-element vectors, and accumulates to the thread-specific result via a dot product. Subsequently, a warp-level reduction (`simd_sum`) sums the individual thread accumulations to compute the final result. (What Metal refers to as SIMD threadgroups, NVIDIA refers to as warps.) The matmul is the [primary source of the speed-up](#performance---gpu-inference-results) in this implementation, but feel free to refer to the other kernels as well.
 
-Instruments offers a profiling tool called [Metal System Trace](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps), which I will eventually use to profile for any potential speed-ups (e.g. fusing kernels, etc.).
+Instruments offers a profiling tool called [Metal System Trace](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps), which I will eventually use to profile for any potential speed-ups (e.g. fusing kernels, etc.). The [neural network hardware / the 16-core neural engine](https://en.wikipedia.org/wiki/Apple_M2) available on my processor should allow for additional speedup, though similarly to AMX, documentation is sorely lacking.
 
-At some point, I will consider how to implement support for other ISAs, CUDA, compilers, etc. But the ultimate goal here is to first get the implementation running on my own laptop.
+At some point, I will consider how to implement support for other ISAs, CUDA, compilers, etc. But the ultimate goal here was to first have a functional implementation of single-decode, single-prompt CPU + single-GPU inference on my own laptop, a goal which is mostly completed as of now.
