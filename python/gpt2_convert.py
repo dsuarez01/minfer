@@ -77,29 +77,29 @@ def copy_metadata(writer: GGUFWriter, reader: GGUFReader, key: str) -> None:
     
     writer.add_key_value(key, value, main_type, sub_type)
 
-def handle_conversion_error(e: Exception, operation: str, args) -> bool:
+def handle_conversion_error(e: Exception, args) -> bool:
     """ Handles conversion errors with helpful hints. Returns True if error handled, False for re-raise. """
     error_msg = str(e)
     
     if isinstance(e, TypeError):
         if args.encode:
-            print(f"Error: {operation} appear to already be encoded (wrong type)")
+            print(f"Error: file appears to already be encoded type (wrong type)")
             print(f"Hint: Try using --decode (-d) instead")
         else:
-            print(f"Error: {operation} appear to already be decoded (wrong type)")
+            print(f"Error: file appears to already be decoded type (wrong type)")
             print(f"Hint: Try using --encode (-e) instead")
         return True
     
     elif isinstance(e, ValueError):
         if "Invalid merge format" in error_msg:
-            print(f"Error: Invalid merge format in {operation.lower()}: {error_msg}")
+            print(f"Error: Invalid merge format in file: {error_msg}")
             return True
         elif args.encode and "not found in BYTE_ENCODER" in error_msg:
-            print(f"Error: {operation} appear to already be encoded (contains strings, not bytes)")
+            print(f"Error: file appears to already be encoded type (contains strings, not bytes)")
             print(f"Hint: Try using --decode (-d) instead")
             return True
         elif args.decode and "not found in BYTE_DECODER" in error_msg:
-            print(f"Error: {operation} appear to already be decoded (contains bytes, not GPT-2 strings)")
+            print(f"Error: file appears to already be decoded type (contains bytes, not GPT-2 strings)")
             print(f"Hint: Try using --encode (-e) instead")
             return True
     
@@ -254,7 +254,7 @@ def main():
     # otherwise if the exception isn't ours, just re-raise
     # must clean up tmp file
     except Exception as e:
-        handled = handle_conversion_error(e, "Conversion", args)
+        handled = handle_conversion_error(e, args)
 
         if "temp_path" in locals() and os.path.exists(temp_path):
             os.remove(temp_path)
