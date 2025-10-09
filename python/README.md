@@ -1,6 +1,8 @@
 ## GGUF Tokenizer Data Conversion Tool (gpt2_convert.py)
 
-A convenience utility that reverses the (Unicode) codepoint mapping "hack" GPT-2 tokenizers commonly employ, where non-printable chars have codepoints that are shifted up by 256 (to printable codepoints for easier debugging/viewing, presumably). The tool undoes this mapping for the values located at the KV metadata attributes `tokenizer.ggml.tokens` and `tokenizer.ggml.merges` in the original GGUF file; note that it effectively modifies the GGUF file **in-place**. Ensure that the attribute `tokenizer.ggml.model` exists and is equal to `gpt2`.
+A convenience utility that reverses the Unicode codepoint mapping "hack" GPT-2 tokenizers commonly employ, where non-printable chars have codepoints that are shifted up by 256 (to printable codepoints for easier debugging/viewing, presumably). 
+
+The tool can both undo ("decode") and apply ("encode") this mapping for the values located at the KV metadata attributes `tokenizer.ggml.tokens` and `tokenizer.ggml.merges` in the original GGUF file; note that it effectively modifies the GGUF file **in-place**. Ensure that the attribute `tokenizer.ggml.model` exists and is equal to `gpt2`.
 
 Steps to use from the project root:
 
@@ -14,10 +16,15 @@ uv sync
 
 # run from project root
 cd ..
-uv run --project python python/gpt2_convert.py <path_to_gguf_file>
+
+# to decode token data (GPT-2 strs -> bytes)
+uv run --project python python/gpt2_convert.py <path_to_gguf_file> { -d | --decode }
+
+# to encode token data (bytes -> GPT-2 strs)
+uv run --project python python/gpt2_convert.py <path_to_gguf_file> { -e | --encode }
 ```
 
-The new GGUF file with the modified tokenizer data will replace the GGUF file located at `<path_to_gguf_file>`. As a quick check for correctness, run the tokenizer test on the modified GGUF file via `./build/tests/<model_name>/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.
+The new GGUF file with the modified tokenizer data will replace the GGUF file located at `<path_to_gguf_file>`. Depending on whether the `--encode/-e` or `--decode/-d` flag was passed in, the file is suffixed with `_enc` or `_dec`, respectively. As a quick check for correctness, run the tokenizer test on a GGUF file (a converted model with the `_dec` suffix) via `./build/tests/<model_name>/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.
 
 ## GGUF Summary Tool (summary.py)
 
@@ -33,5 +40,5 @@ uv sync
 
 # run from project root
 cd ..
-uv run --project python python/summary.py <path_to_gguf_file>
+uv run --project python python/print_summary.py <path_to_gguf_file>
 ```

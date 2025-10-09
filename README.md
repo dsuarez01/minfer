@@ -4,19 +4,19 @@
 ## Table of Contents
 
 - [**Overview**](#overview)
-  - [Recommended System Config](#overview---recommended-system-config)
-  - [Precision Support](#overview---precision-support)
-  - [Usage Instructions](#overview---usage-instructions)
+  - [*Recommended System Config*](#overview---recommended-system-config)
+  - [*Precision Support*](#overview---precision-support)
+  - [*Usage Instructions*](#overview---usage-instructions)
 - [**Benchmark Performance**](#benchmark-performance)
-  - [CPU](#performance---cpu-inference-results)
-  - [GPU](#performance---gpu-inference-results)
+  - [*CPU*](#performance---cpu-inference-results)
+  - [*GPU*](#performance---gpu-inference-results)
 - [**Checklist of Improvements**](#checklist-of-improvements)
 - [**External Dependencies**](#external-dependencies)
 - [**Acknowledgments**](#acknowledgments)
 - [**Disclaimer**](#disclaimer)
 - [**Additional Remarks**](#additional-remarks)
-  - [CPU](#remarks---cpu-inference)
-  - [GPU](#remarks---gpu-inference)
+  - [*CPU*](#remarks---cpu-inference)
+  - [*GPU*](#remarks---gpu-inference)
 
 
 ## Overview
@@ -25,7 +25,7 @@
 
 This project currently supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
 
-Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia), `>=` M2 chip series, C++17. Project will likely not compile with `g/g++`, so use `clang/clang++` if possible. Note that `clang/clang++` are shipped with the XCode Command Line Tools (CLT) by default, which you can check at `/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin` or similar, depending on your OS version. Ensure that you have the XCode CLT corresponding to your OS version installed. See [Precision Support](#precision-support) section below for more details.
+Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia), `>=` M2 chip series, C++17. Project will likely not compile with `g/g++`, so use `clang/clang++` if possible. Note that `clang/clang++` are shipped with the XCode Command Line Tools (CLT) by default, which you can check at `/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin` or similar, depending on your OS version. Ensure that you have the XCode CLT corresponding to your OS version installed. See [Precision Support](#overview---precision-support) section below for more details.
 
 [Work-in-progress: broader support / more robust error handling in the build config, please excuse any errors and/or bugs]
 
@@ -74,10 +74,18 @@ uv sync
 
 # run from project root
 cd ..
-uv run --project python python/gpt2_convert.py <path_to_gguf_file>
 
-# optionally, run python/summary.py for a print-out of the metadata
-uv run --project python python/summary.py <path_to_gguf_file>
+# to decode token data (GPT-2 strs -> bytes)
+# decode appends _dec suffix to file
+uv run --project python python/gpt2_convert.py <path_to_gguf_file> { -d | --decode }
+
+# to encode token data (bytes -> GPT-2 strs)
+# encode appends _enc suffix to file
+# NOTE: encode(decode(file)) -> original GGUF file
+uv run --project python python/gpt2_convert.py <path_to_gguf_file> { -e | --encode }
+
+# optionally, run python/print_summary.py for a print-out of the metadata
+uv run --project python python/print_summary.py <path_to_gguf_file>
 ########################
 
 # Tests
@@ -112,7 +120,7 @@ This repo currently doesn't support batch decoding for tokens. Thus, the prefill
 | Qwen3-0.6B-BF16                     |               57.2                |              N/A*                |
 | Qwen3-1.7B-BF16                     |               27.0                |              N/A*                |
 
-* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
+\* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models before testing. I've yet to find FP16 versions of the 0.6B and 1.7B models, but will test them if and when they become available. Due to cache layer sizing (see the stats for the [M2 Pro](https://en.wikipedia.org/wiki/Apple_M2), for example), I found that these were the only models that could be reliably tested (without cache misses, thrashing, etc.).
 
@@ -145,7 +153,7 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 ## External Dependencies:
 - [PCRE2](https://github.com/PCRE2Project/pcre2) 
 - [Minja](https://github.com/google/minja)
-- [Metal-cpp] (https://github.com/bkaradzic/metal-cpp)
+- [Metal-cpp](https://github.com/bkaradzic/metal-cpp)
 
 
 ## Acknowledgments:
