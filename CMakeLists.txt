@@ -29,8 +29,10 @@ else()
     message(WARNING "OpenMP not found.")
 endif()
 
+
+# for now, only arm64 procs are supported (TO-DO: improve exception handling)
 function(apply_arch_flags target_name)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
         target_compile_options(${target_name} PRIVATE -march=armv8.6-a+fp16+bf16 -mtune=apple-m2)
     endif()
 endfunction()

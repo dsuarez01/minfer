@@ -1,23 +1,36 @@
 ### Minfer: Minimal inference engine running on Apple M-series chips
 
-Currently, this project supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
+This project currently supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
+
+Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia), `>=` M2 chip series, C++17. Project will likely not compile with `g/g++`, so use `clang/clang++` if possible. Note that `clang/clang++` are shipped with the XCode Command Line Tools (CLT) by default. Also, ensure that you have the XCode CLT corresponding to your OS version installed. See `[Precision Support](#precision-support)` section below for more details.
+
+[Work-in-progress: broader support / more robust error handling in the build config, please excuse any errors and/or bugs]
 
 ### Precision Support
 
-|     (CPU-Only Inference)     | FP32 Support | FP16 Support | BF16 Support  |
-|------------------------------|--------------|--------------|---------------|
-| M1 Series                    | Y ✅         | Y ✅         |     N ❌       |
-| M2 Series                    | Y ✅         | Y ✅         |     Y ✅       |
-| M3 Series                    | Y ✅         | Y ✅         |     Y ✅       |
-| M4 Series                    | Y ✅         | Y ✅         |     Y ✅       |
+|     CPU + GPU Inference      | FP32 Support | FP16 Support |     BF16 Support     |
+|------------------------------|--------------|--------------|----------------------|
+| M1 Series                    | Y            | Y            | N (CPU)              |
+|                              |              |              | Y (GPU, emulated)    |
+| M2 Series                    | Y            | Y            | Y (CPU)              |
+|                              |              |              | Y (GPU, emulated)    |
+| M3 Series                    | Y            | Y            | Y (CPU)              |
+|                              |              |              | Y (GPU, native)      |
+| M4 Series                    | Y            | Y            | Y (CPU)              |
+|                              |              |              | Y (GPU, native)      |
 
+For **CPU support**, I would recommend adjusting the `-march` and `-mtune` flags in `function(apply_arch_flags target_name)` (defined at `./CMakeLists.txt`) to match an ARM Neon version, desired dtype support, and target architecture that is compatible with your system. You'll want to set the flags as follows: `-march=<armv8.X-a>+<fp16 for FP16 support, only supported for armv8.X-a where X>=2>+<bf16 for BF16 support, only supported for armv8.X-a where X>=6>`; `-mtune=<apple-mX>` according to whatever your chip version is (`X=1, X=2, X=3, X=4, etc. as new chips are added`).
+
+For **GPU support**, I would recommend keeping Metal 3.2 as the version (see [this link](https://support.apple.com/en-us/102894) for more information about Metal support across M-series chips + OS versions), and adjusting the `-target` flag in `xcrun -sdk macosx metal -std=metal3.2 -target air64-apple-macos26.0 -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}` as needed (see `./src/CMakeLists.txt`). The relevant section of commands here will precompile the shader source file (`./src/ops/kernels.metal`) into a .metallib library, which is then embedded as a byte array into the program for use by the Metal interface (credit: [zeux/calm](https://github.com/zeux/calm)).
 
 ### Usage Instructions
 
-Clone the repo and run the following instructions:
+Clone the repo and run the following instructions, adjusting the build config if necessary.
+
+(NOTE: for python conversion, refer to `[./python](./python/README.md#gguf-tokenizer-data-conversion-tool-gpt2_convertpy)` for more details on usage.)
 
 ```bash
-# Skip if already installed
+# Skip if already installed, only necessary for threading support on the CPU
 brew install libomp
 
 # Clone the repository
@@ -27,28 +40,55 @@ cd minfer
 # Init. and update git submodules (for PCRE2)
 git submodule update --init --recursive
 
-# Build
+# Build (see "Precision Support" section for adjustments to arch flags as needed)
 cmake -S . -B build # NOTE: -DCMAKE_BUILD_TYPE is Release by default, pass in Debug if needed
 cmake --build build --parallel
 
+############ PYTHON CONVERSION SCRIPT ############
+# NOTE: Convert the model using the gpt2_convert.py script BEFORE running inference, see ./python for more info
+# if uv not installed already
+pip install uv
+
+# uv sync in python dir to install env and dependencies
+cd python
+uv sync
+
+# run from project root
+cd ..
+uv run --project python python/gpt2_convert.py <path_to_gguf_file>
+
+# optionally, run python/summary.py for a print-out of the metadata
+uv run --project python python/summary.py <path_to_gguf_file>
+########################
+
 # Tests
-./build/tests/test_ops
+./build/tests/cpu_ops/test_cpu_ops
 ./build/tests/qwen3/test_tokenizer <path_to_gguf_file>
 
 # App usage instructions
 ./build/apps/benchmark -h
 ./build/apps/generate -h
 
-# Examples (for optimal performance, set OMP_NUM_THREADS=<# of p-cores>):
-OMP_NUM_THREADS=6 ./build/apps/benchmark model.gguf -s 42
-OMP_NUM_THREADS=6 ./build/apps/generate model.gguf -p "Hello" -m 2048 -s 42 -i
+# Usage examples for CPU inference (for optimal performance, set OMP_NUM_THREADS=<# of p-cores>):
+OMP_NUM_THREADS=6 ./build/apps/benchmark <path_to_gguf_file> -d cpu -s 42
+OMP_NUM_THREADS=6 ./build/apps/generate <path_to_gguf_file> -d cpu -p "Hello" -m 4096 -s 42 -i
+
+# Usage examples for GPU inference
+./build/apps/benchmark <path_to_gguf_file> -d gpu -s 42
+./build/apps/generate <path_to_gguf_file> -d gpu -p "Hello" -m 4096 -s 42 -i
 ```
 
 ### Benchmark Performance
 
 The benchmark consists of a 512-token prefill and 128-token generation phase (referenced in the table as `tg-128`, refer to the statistics `llama-bench` reports. More info can be found at the [llama.cpp](https://github.com/ggml-org/llama.cpp) project repository). 
 
-This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
+#### GPU inference results
+
+\[ Work-in-progress \]
+
+#### CPU inference results
+
+This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations, and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
 
 |     (M2 Pro CPU, avg of 5 runs)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
 |-------------------------------------|-----------------------------------|----------------------------------|
@@ -58,20 +98,23 @@ This repo currently doesn't support batch decoding for tokens. Thus, the prefill
 
 * llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
 
-Refer to e.g. [Unsloth AI](https://huggingface.co/unsloth) for access to the recommended GGUF model sizes and precisions listed above. I've yet to find FP16 versions of the 0.6B and 1.7B models, but will test them if and when they become available. Due to cache layer sizing (see the stats for the [M2 Pro](https://en.wikipedia.org/wiki/Apple_M2), for example), I found that these were the only models that could be reliably tested (without cache misses, thrashing, etc.).
+Refer to e.g. [Unsloth AI](https://huggingface.co/unsloth) for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models before . I've yet to find FP16 versions of the 0.6B and 1.7B models, but will test them if and when they become available. Due to cache layer sizing (see the stats for the [M2 Pro](https://en.wikipedia.org/wiki/Apple_M2), for example), I found that these were the only models that could be reliably tested (without cache misses, thrashing, etc.).
 
 #### Checklist of Improvements (optimizations to be implemented, etc.):
 - [x] Threading in the naive FP32 matmul implementation
 - [x] Head-level parallelization
 - [x] Manual SIMD for the FP32, FP16, BF16 matmuls using NEON intrinsics
 - [x] Refactor loader, tokenizer, improve chat template handling
-- [ ] Quantizing KV cache (will implement for GPU)
-- [ ] Implementing operations for the GPU
+- [x] Implementing operations for the GPU
+- [ ] Quantizing KV cache
 - [ ] Add support for multi-turn conversation
+- [ ] Refactor code to support more models, tokenizers, activation types, OS versions, etc.
+- [ ] (Eventually) Support more GGML quantization types (e.g. Q8_0)
 
 #### External dependencies:
 - [PCRE2](https://github.com/PCRE2Project/pcre2) 
 - [Minja](https://github.com/google/minja)
+- [Metal-cpp] (https://github.com/bkaradzic/metal-cpp)
 
 #### Acknowledgements:
 - [andrewkchan/yalm](https://github.com/andrewkchan/yalm)
@@ -92,4 +135,6 @@ Another tool I found to be useful in profiling CPU activity is [Instruments](htt
 
 <img width="1370" height="792" alt="profiling" src="https://github.com/user-attachments/assets/1141acbe-dff1-41cd-b413-88936af423dd" />
 
-GPU support via MSL is being implemented next. I suspect that we should be able to support larger models, the constraint being that the model must fit in VRAM. At some point, I will consider how to implement support for other ISAs and CUDA (the focus here is to get the implementation running on my own laptop first).
+\[ TO-DO: add remarks about GPU support here \]
+
+At some point, I will consider how to implement support for other ISAs, CUDA, compilers, etc. But the ultimate goal here is to first get the implementation running on my own laptop.

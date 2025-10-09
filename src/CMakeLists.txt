@@ -30,6 +30,7 @@ if(APPLE AND METAL_FRAMEWORK)
         OUTPUT ${METAL_C}
         # useful flags: -v, -fmetal-enable-logging
         # useful env variables: MTL_LOG_LEVEL=MTLLogLevelDebug, MTL_LOG_TO_STDERR=1
+        # include <metal_logging> and use os_log_default.log() in the shader files to catch errors
         COMMAND xcrun -sdk macosx metal -std=metal3.2 -target air64-apple-macos26.0 -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
         COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
         COMMAND xxd -i kernels.metallib > ${METAL_C}
