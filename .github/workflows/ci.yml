@@ -31,4 +31,4 @@ jobs:
         run: cmake --build build --parallel
       
       - name: Run ops tests
-        run: ./build/tests/test_ops
+        run: ./build/tests/cpu_ops/test_cpu_ops
