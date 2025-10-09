@@ -182,6 +182,10 @@ Another tool I found to be useful in profiling CPU activity is [Instruments](htt
 <img width="1370" height="792" alt="profiling" src="https://github.com/user-attachments/assets/1141acbe-dff1-41cd-b413-88936af423dd" />
 
 ### Remarks - GPU Inference:
-\[ TO-DO: add remarks about GPU support here \]
+I found implementing GPU support to be a much simpler process. The GPU is better able to take advantage of various parallelization opportunities available in the workload due to the capability of each core to spawn hundreds of threads. For a 16-core GPU (such as [mine](https://en.wikipedia.org/wiki/Apple_M2)), this translates into thousands of threads, where each metal kernel in `./src/ops/kernels.metal` — as well as the dispatch pattern in `./src/models/qwen3/module.cpp`, refer to each layer's `metal_forward` method — together demonstrate how the threads are allocated across tasks, as well as the type of work they are assigned.
+
+In particular, the matmul (see `linear_proj`) is computed via SIMD threadgroups of 32 threads (on my hardware, usually the same for M-series chips) assigned to `matmul_row`, which performs a coalesced access of the weights, loads into 4-element vectors, and accumulates to the thread-specific result via a dot product. Subsequently, a warp-level reduction (`simd_sum`) sums the individual thread accumulations to compute the final result. (What Metal refers to as SIMD threadgroups, NVIDIA refers to as warps.) The matmul is the [primary source of the speed-up](#performance---gpu-inference-results) in this implementation, but feel free to refer to the other kernels as well.
+
+Instruments offers a profiling tool called [Metal System Trace](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps), which I will eventually use to profile for any potential speed-ups (e.g. fusing kernels, etc.).
 
 At some point, I will consider how to implement support for other ISAs, CUDA, compilers, etc. But the ultimate goal here is to first get the implementation running on my own laptop.
