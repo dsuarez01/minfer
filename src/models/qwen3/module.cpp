@@ -1,9 +1,8 @@
 #include "minfer/models/qwen3/module.hpp"
-#include "minfer/ops/cpu_ops.hpp"
+#include "minfer/ops/kernels.hpp"
 #include "minfer/config/metal_config.hpp"
 
 #include <cassert>
-#include <iostream>
 
 // === TYPE CONVERSION UTILS ===
 namespace {
@@ -37,7 +36,6 @@ Qwen3Embed::Qwen3Embed(
 }
 
 void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
-    // device dispatch (GPU case not implemented yet)
     if (get_device() == DeviceType::CPU) {
         switch (get_qdtype()) {
             case DataType::F32: Qwen3Embed::cpu_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
@@ -71,13 +69,6 @@ void Qwen3Embed::metal_forward(float* x_out, int token_id) {
         &token_offset, sizeof(int),
         (void*[]){x_out, weight->data}, 2
     );
-
-    // float* x_cpu = (float*)MetalManager::buf_contents(x_out);
-    // std::cout << "Embed output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
 }
 
 // === LM HEAD ===
@@ -121,19 +112,14 @@ void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
 
     std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(get_qdtype());
 
+    struct { size_t weight_offset; int d_in; } args = { 0, d_in };
+
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         d_out, 32,
-        &d_in, sizeof(int),
+        &args, sizeof(args),
         (void*[]){weight->data, const_cast<float*>(x_in), x_out}, 3
     );
-
-    // float* x_cpu = (float*)MetalManager::buf_contents(x_out);
-    // std::cout << "LMHead output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
     
     if (bias) {
         size_t n_thrgps = (d_out+1023) / 1024;
@@ -337,55 +323,33 @@ void Qwen3GQA::metal_forward(
         (void*[]){w_attnnorm->data, x_in, x_norm}, 3
     );
 
-    // float* x_cpu = (float*)MetalManager::buf_contents(x_norm);
-    // std::cout << "GQA prermsnorm output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
-
     // 2-4. QKV projs
+
+    // for clarity, but otherwise redundant
+    struct { size_t offset; int d_in; } q_proj_args = { 0, d_model };
+    struct { size_t offset; int d_in; } k_proj_args = { 0, d_model };
+    struct { size_t offset; int d_in; } v_proj_args = { 0, d_model };
+
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         q_dim, 32,
-        &d_model, sizeof(int),
+        &q_proj_args, sizeof(q_proj_args),
         (void*[]){wq->data, x_norm, q_buf}, 3
     );
-    
-    // x_cpu = (float*)MetalManager::buf_contents(q_buf);
-    // std::cout << "GQA Q proj output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
 
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         kv_dim, 32,
-        &d_model, sizeof(int),
+        &k_proj_args, sizeof(k_proj_args),
         (void*[]){wk->data, x_norm, k_buf}, 3
     );
-
-    // x_cpu = (float*)MetalManager::buf_contents(k_buf);
-    // std::cout << "GQA K proj output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
     
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         kv_dim, 32,
-        &d_model, sizeof(int),
+        &v_proj_args, sizeof(v_proj_args),
         (void*[]){wv->data, x_norm, v_buf}, 3
     );
-
-    // x_cpu = (float*)MetalManager::buf_contents(v_buf);
-    // std::cout << "GQA V proj output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
 
     // 5-6. rmsnorm across heads for Q,K
     struct { int dim; float eps; int stride; } head_norm = {d_head, eps, d_head};
@@ -439,8 +403,10 @@ void Qwen3GQA::metal_forward(
     );
 
     // 10-12. attn scoring, mixing
-    struct { int d_head; int kv_dim; int kv_mul; int kv_len; int seq_len; size_t loff; } score_params = {
-        d_head, kv_dim, heads_per_kv, kv_len, (int)max_seq_len, block_idx * max_seq_len * kv_dim
+    
+    // attn scoring    
+    struct { size_t loff; int d_head; int kv_dim; int kv_mul; int kv_len; int seq_len; } score_params = {
+        block_idx * max_seq_len * kv_dim, d_head, kv_dim, heads_per_kv, kv_len, (int)max_seq_len
     };
 
     MetalManager::dispatch2d(
@@ -457,35 +423,31 @@ void Qwen3GQA::metal_forward(
         "softmax",
         n_heads, 1024,
         &softmax_params, sizeof(softmax_params),
-        (void*[]){att_scores_buf}, 1
+        (void*[]){att_scores_buf, att_scores_buf}, 2
     );
 
     // attn mixing
-    struct { int seq_len; int kv_len; int d_head; int kv_dim; int kv_mul; size_t loff; } out_params = {
-        (int)max_seq_len, kv_len, d_head, kv_dim, heads_per_kv, block_idx * max_seq_len * kv_dim
+    struct { size_t loff; int seq_len; int kv_len; int d_head; int kv_dim; int kv_mul; } out_params = {
+        block_idx * max_seq_len * kv_dim, (int)max_seq_len, kv_len, d_head, kv_dim, heads_per_kv
     };
+
     MetalManager::dispatch2d(
         "attn_out",
-        d_head, n_heads,  // X=head dim, Y=heads
+        d_head, n_heads, // X=head dim, Y=heads
         32,
         &out_params, sizeof(out_params),
         (void*[]){att_scores_buf, v_cache, att_out_buf}, 3
     );
 
+    struct { size_t offset; int d_in; } output_args = { 0, q_dim };
+
     // 13. output proj
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         d_model, 32,
-        &q_dim, sizeof(int),
+        &output_args, sizeof(output_args),
         (void*[]){wo->data, att_out_buf, x_norm}, 3
     );
-
-    // x_cpu = (float*)MetalManager::buf_contents(x_norm);
-    // std::cout << "GQA out proj output [0-99]: ";
-    // for (int i = 0; i < 100; i++) {
-    //     std::cout << x_cpu[i] << " ";
-    // }
-    // std::cout << std::endl;
 
     // 14. residual
     size_t res_thrgps = (d_model+1023) / 1024;
@@ -613,16 +575,16 @@ void Qwen3MoE::metal_forward(
         (void*[]){w_moenorm->data, x_in, x_norm}, 3
     );
 
-    // workaround for non-moe models
-    if (n_experts == 0) {
-        active_experts[0] = 0;
-        active_experts_weights[0] = 1.0f;
-    } else {
+    // if MoE model
+    if (n_experts > 0) {
+
         // 2. router
+        struct { size_t weight_offset; int d_in; } router_args = { 0, d_model };
+
         MetalManager::dispatch1d(
             lin_proj_name.c_str(),
             n_experts, 32,
-            &d_model, sizeof(int),
+            &router_args, sizeof(router_args),
             (void*[]){w_router->data, x_norm, moe_scores}, 3
         );
 
@@ -632,66 +594,47 @@ void Qwen3MoE::metal_forward(
             "moe_topk",
             1, 32,
             &topk_params, sizeof(topk_params),
-            (void*[]){moe_scores, active_experts, active_experts_scores}, 3
+            (void*[]){moe_scores, active_experts, active_experts_weights}, 3
         );
 
-        // 4. softmax on scores
+        // 4. softmax
         struct { int dim; int stride; } softmax_params = {n_active_experts, 0};
         MetalManager::dispatch1d(
             "softmax",
             1, 1024,
             &softmax_params, sizeof(softmax_params),
-            (void*[]){active_experts_scores}, 1
+            (void*[]){active_experts_weights, active_experts_weights}, 2
         );
-        
-        // copy to weights (TO-DO: fix?)
-        for (int i=0; i<n_active_experts; ++i) {
-            active_experts_weights[i] = active_experts_scores[i];
-        }
     }
+
+    int* active_experts_cpu = (int*)MetalManager::buf_contents(active_experts);
+    float* active_experts_weights_cpu = (float*)MetalManager::buf_contents(active_experts_weights);
 
     // 5. process experts
     int n = (n_experts > 0 ? n_active_experts : 1);
     for (int i=0; i<n; ++i) {
-        int expert_idx = active_experts[i];
+        int expert_idx = active_experts_cpu[i];
 
-        // byte offset
-        size_t gate_offset = expert_idx*d_ff*d_model * sizeof(qdtype);
-        size_t down_offset = expert_idx*d_model*d_ff * sizeof(qdtype);
-
-        void* gate_ptr = (char*)ws_gate->data + gate_offset;
-        void* up_ptr = (char*)ws_up->data + gate_offset;
-        void* down_ptr = (char*)ws_down->data + down_offset;
+        // for clarity, but otherwise redundant
+        struct { size_t weight_offset; int d_in; } gate_args = { (size_t) expert_idx*d_ff*d_model, d_model };
+        struct { size_t weight_offset; int d_in; } up_args = { (size_t) expert_idx*d_ff*d_model, d_model };
+        struct { size_t weight_offset; int d_in; } down_args = { (size_t) expert_idx*d_model*d_ff, d_ff };
 
         // gate proj
         MetalManager::dispatch1d(
             lin_proj_name.c_str(),
             d_ff, 32,
-            &d_model, sizeof(int),
-            (void*[]){gate_ptr, x_norm, gate_buf}, 3
+            &gate_args, sizeof(gate_args),
+            (void*[]){ws_gate->data, x_norm, gate_buf}, 3
         );
-
-        // float* x_cpu = (float*)MetalManager::buf_contents(gate_buf);
-        // std::cout << "MoE gate buf output [0-99]: ";
-        // for (int i = 0; i < 100; i++) {
-        //     std::cout << x_cpu[i] << " ";
-        // }
-        // std::cout << std::endl;
 
         // up proj
         MetalManager::dispatch1d(
             lin_proj_name.c_str(),
             d_ff, 32,
-            &d_model, sizeof(int),
-            (void*[]){up_ptr, x_norm, up_buf}, 3
+            &up_args, sizeof(up_args),
+            (void*[]){ws_up->data, x_norm, up_buf}, 3
         );
-
-        // x_cpu = (float*)MetalManager::buf_contents(up_buf);
-        // std::cout << "MoE up buf output [0-99]: ";
-        // for (int i = 0; i < 100; i++) {
-        //     std::cout << x_cpu[i] << " ";
-        // }
-        // std::cout << std::endl;
 
         // silu+mul
         size_t silu_thrgps = (d_ff+1023) / 1024;
@@ -706,19 +649,12 @@ void Qwen3MoE::metal_forward(
         MetalManager::dispatch1d(
             lin_proj_name.c_str(),
             d_model, 32,
-            &d_ff, sizeof(int),
-            (void*[]){down_ptr, gate_buf, exp_buf}, 3
+            &down_args, sizeof(down_args),
+            (void*[]){ws_down->data, gate_buf, exp_buf}, 3
         );
 
-        // x_cpu = (float*)MetalManager::buf_contents(exp_buf);
-        // std::cout << "MoE exp buf output [0-99]: ";
-        // for (int i = 0; i < 100; i++) {
-        //     std::cout << x_cpu[i] << " ";
-        // }
-        // std::cout << std::endl;
-
         // weighted resadd
-        float weight = active_experts_weights[i];
+        float weight = active_experts_weights_cpu[i];
         size_t res_thrgps = (d_model+1023) / 1024;
         MetalManager::dispatch1d(
             "weight_resadd",
@@ -726,13 +662,6 @@ void Qwen3MoE::metal_forward(
             &weight, sizeof(float),
             (void*[]){x_in, exp_buf}, 2
         );
-
-        // x_cpu = (float*)MetalManager::buf_contents(x_in);
-        // std::cout << "MoE weighted resadd output [0-99]: ";
-        // for (int i = 0; i < 100; i++) {
-        //     std::cout << x_cpu[i] << " ";
-        // }
-        // std::cout << std::endl;
     }
 }
 

@@ -17,7 +17,6 @@ BaseModel::BaseModel(const std::string& model_file, const RunParams& run_params)
 
 void BaseModel::append_layer(std::unique_ptr<BaseLayer> layer) {
     _read_bytes += layer->get_read_bytes();
-    // std::cout << "qdtype: " << dtype_to_str(layer->get_qdtype()) << std::endl;
     _layers.push_back(std::move(layer));
 }
 

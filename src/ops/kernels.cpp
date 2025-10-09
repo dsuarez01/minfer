@@ -1,4 +1,4 @@
-#include "minfer/ops/cpu_ops.hpp"
+#include "minfer/ops/kernels.hpp"
 #include "minfer/base/module.hpp"
 
 #include <cmath>
@@ -289,7 +289,7 @@ namespace cpu {
 
     template<>
     void matmul<bf16_t, bf16_tag>(float* x_out, const float* x_in, const bf16_t* weight, int d_out, int d_in) {
-        const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon pipelines)
+        const int TILE_SIZE = 16; // needs to be a multiple of 16 (4 Neon vector pipelines)
         
         assert((d_in % TILE_SIZE == 0) && "d_in should be divisible by the tile size");
 

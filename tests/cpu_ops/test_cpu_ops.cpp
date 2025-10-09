@@ -1,12 +1,12 @@
 #include "base/test_base.hpp"
-#include "ops/test_matmul.hpp"
-#include "ops/test_silu.hpp"
-#include "ops/test_softmax.hpp"
-#include "ops/test_rmsnorm.hpp"
-#include "ops/test_rope.hpp"
-#include "ops/test_attn.hpp"
-#include "ops/test_swiglu.hpp"
-#include "ops/test_route.hpp"
+#include "cpu_ops/test_matmul.hpp"
+#include "cpu_ops/test_silu.hpp"
+#include "cpu_ops/test_softmax.hpp"
+#include "cpu_ops/test_rmsnorm.hpp"
+#include "cpu_ops/test_rope.hpp"
+#include "cpu_ops/test_attn.hpp"
+#include "cpu_ops/test_swiglu.hpp"
+#include "cpu_ops/test_route.hpp"
 
 #include <memory>
 #include <vector>

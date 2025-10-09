@@ -1,5 +1,5 @@
-#include "ops/test_matmul.hpp"
-#include "minfer/ops/cpu_ops.hpp"
+#include "cpu_ops/test_matmul.hpp"
+#include "minfer/ops/kernels.hpp"
 
 TestMatmul::TestMatmul(const std::string& name) : TestBase(name) {}
 
@@ -227,6 +227,6 @@ void TestMatmul::run_all_tests() {
     test_zero_matrix();
     test_zero_vector();
     test_large_values();
-    // test_fp16_matmul();
+    test_fp16_matmul();
     // test_bf16_matmul();
 }

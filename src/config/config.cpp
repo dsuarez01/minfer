@@ -357,6 +357,12 @@ RunState::RunState(const std::shared_ptr<Config> config) : config(config) {
     active_experts_scores = make_aligned_unique<float>(std::max(config->n_active_experts, 1));
     active_experts_weights = make_aligned_unique<float>(std::max(config->n_active_experts, 1));
 
+    // For non-MoE models, before potentially moving to GPU, set these values
+    if (config->n_experts == 0) {
+        active_experts[0] = 0;
+        active_experts_weights[0] = 1.0f;
+    }
+
     // logits
     logits = make_aligned_unique<float>(config->vocab_size);
 

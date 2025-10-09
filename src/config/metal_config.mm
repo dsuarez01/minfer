@@ -103,6 +103,7 @@
             g_metal_ctx = std::make_unique<MetalContext>();
             g_metal_ctx->device.reset(MTL::CreateSystemDefaultDevice());
             assert(g_metal_ctx->device.get());
+
             g_metal_ctx->cmd_queue.reset(g_metal_ctx->device->newCommandQueue());
             assert(g_metal_ctx->cmd_queue.get());
 

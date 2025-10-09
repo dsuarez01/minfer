@@ -1,5 +1,5 @@
-#include "ops/test_route.hpp"
-#include "minfer/ops/cpu_ops.hpp"
+#include "cpu_ops/test_route.hpp"
+#include "minfer/ops/kernels.hpp"
 
 TestRoute::TestRoute(const std::string& name) : TestBase(name) {}
 

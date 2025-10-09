@@ -3,12 +3,14 @@ import os
 import shutil
 import tempfile
 
-from gguf import GGUFReader, GGUFWriter, GGUFValueType
+import numpy as np
+
+from gguf import GGUFReader, GGUFWriter, GGUFValueType, GGMLQuantizationType
 
 # see https://github.com/zeux/calm/blob/main/tools/convert.py
 def create_gpt2_byte_decoder():
     """ Reverses the GPT-2 tokenizer byte mapping """
-    # codepoints of printable chars are not remapped
+    # codepoints of printable chars not remapped
     bs = (list(range(ord("!"), ord("~") + 1)) + 
           list(range(ord("¡"), ord("¬") + 1)) + 
           list(range(ord("®"), ord("ÿ") + 1)))
@@ -79,7 +81,7 @@ def main():
             print(f"Tokenizer model is '{tokenizer_model}', not 'gpt2': no changes made")
             return
 
-        # process tokens if present
+        # process tokens (if present)
         tokens_field = reader.get_field("tokenizer.ggml.tokens")
         if tokens_field is None:
             print("'tokenizer.ggml.tokens' not found in metadata, no changes made")
@@ -89,7 +91,7 @@ def main():
         print(f"Processing {len(tokens)} tokens...")
         new_tokens = [process_token(t) for t in tokens]
 
-        # process merges if present
+        # process merges (if present)
         merges_field = reader.get_field("tokenizer.ggml.merges")
         if merges_field is None:
             print("'tokenizer.ggml.merges' not found in metadata, no changes made")
@@ -106,7 +108,7 @@ def main():
             p2 = process_token(parts[1])
             new_merges.append(p1 + b" " + p2)
 
-        # temp file in same directory as GGUF file
+        # tmp file in same dir as GGUF file
         dir_name = os.path.dirname(args.gguf_path)
         with tempfile.NamedTemporaryFile(dir=dir_name, delete=False) as temp_file:
             temp_path = temp_file.name
@@ -115,7 +117,7 @@ def main():
         arch = arch_field.contents() if arch_field else "none"
         writer = GGUFWriter(temp_path, arch)
 
-        # writer automatically adds these keys, should be skipped
+        # writer auto-adds these keys, skip them
         auto_generated_keys = {
             "general.architecture",
             "GGUF.version",
@@ -123,24 +125,29 @@ def main():
             "GGUF.kv_count"
         }
 
-        # copy all (potentially modified) metadata, skipping auto-generated keys
+        # add KV metadata
         for key, _ in reader.fields.items():
             if key in auto_generated_keys:
                 continue
             elif key == "tokenizer.ggml.tokens":
-                # Use add_token_list which handles bytes properly
                 writer.add_token_list(new_tokens)
             elif key == "tokenizer.ggml.merges":
                 writer.add_token_merges(new_merges)
             else:
                 copy_metadata(writer, reader, key)
         
-        # copy tensors unchanged
+        # add tensors
         for tensor in reader.tensors:
+
+            # work-around due to a bug w/ quant_shape_from_byte_shape in GGUF writer source code
+            # (this preserves shape of the BF16 tensors)
+            if tensor.tensor_type == GGMLQuantizationType.BF16 and tensor.data.dtype == np.uint8:
+                tensor.data.dtype = np.float16
+
             writer.add_tensor(
                 name=tensor.name,
                 tensor=tensor.data,
-                raw_shape=tensor.shape,
+                raw_shape=tuple(reversed(tensor.shape)), # GGUF writer reverses this
                 raw_dtype=tensor.tensor_type,
             )
         
@@ -149,7 +156,6 @@ def main():
         writer.write_tensors_to_file()
         writer.close()
 
-        # replace orig file with temp file
         shutil.move(temp_path, args.gguf_path)
         print(f"Successfully modified {args.gguf_path} in-place.")
         

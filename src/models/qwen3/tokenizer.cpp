@@ -15,12 +15,12 @@ Qwen3Tokenizer::Qwen3Tokenizer(
     uint32_t pad_id
 ) : _token_types(token_types),
     BaseTokenizer(eos_id, pad_id),
-    _vocab(process_vocab(tokens, token_types)),
-    _special_tokens(extract_special_tokens(_vocab, token_types)),
-    _vocab_to_id(build_vocab_map(_vocab)),
-    _merge_rules(process_merge_rules(merges)),
-    _compiled_pattern(compile_regex_pattern()),
-    _match_data(create_match_data(_compiled_pattern.get()))
+    _vocab(tokens),
+    _special_tokens(init_special_tokens(_vocab, token_types)),
+    _vocab_to_id(init_vocab_map(_vocab)),
+    _merge_rules(init_merge_rules(merges)),
+    _compiled_pattern(init_regex_pattern()),
+    _match_data(init_match_data(_compiled_pattern.get()))
 {
     if (tokens.size() != token_types.size()) { // tokens and token_types should always be same length
         throw std::invalid_argument("Token and token_type arrays must have same size");
@@ -81,18 +81,7 @@ std::string Qwen3Tokenizer::decode(const std::vector<uint32_t>& tokens) {
     return result;
 }
 
-std::vector<std::string> Qwen3Tokenizer::process_vocab(
-    const std::vector<std::string>& tokens, 
-    const std::vector<uint32_t>& token_types
-) {
-    if (tokens.size() != token_types.size()) {
-        throw std::invalid_argument("Token and token_type arrays must have equal length");
-    }
-
-    return tokens;
-}
-
-std::unordered_set<std::string> Qwen3Tokenizer::extract_special_tokens(
+std::unordered_set<std::string> Qwen3Tokenizer::init_special_tokens(
     const std::vector<std::string>& vocab,
     const std::vector<uint32_t>& token_types
 ) {
@@ -108,20 +97,20 @@ std::unordered_set<std::string> Qwen3Tokenizer::extract_special_tokens(
     return special_tokens;
 }
 
-std::unordered_map<std::string, uint32_t> Qwen3Tokenizer::build_vocab_map(
+std::unordered_map<std::string, uint32_t> Qwen3Tokenizer::init_vocab_map(
     const std::vector<std::string>& vocab
 ) {
     std::unordered_map<std::string, uint32_t> vocab_to_id;
     vocab_to_id.reserve(vocab.size());
     
-    for (size_t i = 0; i < vocab.size(); ++i) {
+    for (size_t i=0; i<vocab.size(); ++i) {
         vocab_to_id[vocab[i]] = static_cast<uint32_t>(i);
     }
     
     return vocab_to_id;
 }
 
-std::vector<Qwen3Tokenizer::MergeRule> Qwen3Tokenizer::process_merge_rules(
+std::vector<Qwen3Tokenizer::MergeRule> Qwen3Tokenizer::init_merge_rules(
     const std::vector<std::string>& merges
 ) {
     std::vector<MergeRule> merge_rules;
@@ -143,7 +132,7 @@ std::vector<Qwen3Tokenizer::MergeRule> Qwen3Tokenizer::process_merge_rules(
     return merge_rules;
 }
 
-std::unique_ptr<pcre2_code, Qwen3Tokenizer::PCRE2Deleter> Qwen3Tokenizer::compile_regex_pattern() {
+std::unique_ptr<pcre2_code, Qwen3Tokenizer::PCRE2Deleter> Qwen3Tokenizer::init_regex_pattern() {
     // tiktoken (cl100k_base): https://github.com/openai/tiktoken/blob/main/tiktoken_ext/openai_public.py
     std::string base_pattern = R"('(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+|\s++$|\s*[\r\n]|\s+(?!\S)|\s)";
     
@@ -170,7 +159,7 @@ std::unique_ptr<pcre2_code, Qwen3Tokenizer::PCRE2Deleter> Qwen3Tokenizer::compil
 }
 
 std::unique_ptr<pcre2_match_data, Qwen3Tokenizer::PCRE2MatchDataDeleter> 
-Qwen3Tokenizer::create_match_data(pcre2_code* pattern) {
+Qwen3Tokenizer::init_match_data(pcre2_code* pattern) {
     pcre2_match_data* raw_match_data = pcre2_match_data_create_from_pattern(pattern, nullptr);
     if (!raw_match_data) {
         throw std::runtime_error("Failed to create PCRE2 match data");
@@ -261,8 +250,8 @@ std::vector<uint32_t> Qwen3Tokenizer::bpe_encode(const std::string& token) {
         bool found_merge = false;
         std::vector<std::string> new_word;
         
-        for (size_t i = 0; i < word.size(); ++i) {
-            if (i < word.size() - 1 && word[i] == rule.left && word[i+1] == rule.right) {
+        for (size_t i=0; i<word.size(); ++i) {
+            if (i < word.size()-1 && word[i] == rule.left && word[i+1] == rule.right) {
                 if (!found_merge) {
                     new_word.reserve(word.size());
                     new_word.insert(new_word.end(), word.begin(), word.begin() + i);

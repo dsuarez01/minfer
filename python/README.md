@@ -14,7 +14,24 @@ uv sync
 
 # run from project root
 cd ..
-uv run --project ./python python/gpt2_convert.py <path_to_gguf_file>
+uv run --project python python/gpt2_convert.py <path_to_gguf_file>
 ```
 
 The new GGUF file with the modified tokenizer data will replace the GGUF file located at `<path_to_gguf_file>`. As a quick check for correctness, run the tokenizer test on the modified GGUF file via `./build/tests/<model_name>/test_tokenizer <path_to_gguf_file>`: all of the tests should pass.
+
+## GGUF Summary Tool (summary.py)
+
+Prints out KV and tensor metadata. Available for use on converted and non-converted GGUF models.
+
+```bash
+# if uv not installed already
+pip install uv
+
+# uv sync in python dir to install env and dependencies
+cd python
+uv sync
+
+# run from project root
+cd ..
+uv run --project python python/summary.py <path_to_gguf_file>
+```

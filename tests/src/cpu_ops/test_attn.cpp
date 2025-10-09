@@ -1,5 +1,5 @@
-#include "ops/test_attn.hpp"
-#include "minfer/ops/cpu_ops.hpp"
+#include "cpu_ops/test_attn.hpp"
+#include "minfer/ops/kernels.hpp"
 
 #include <cmath>
 

@@ -66,20 +66,16 @@ private:
     std::unique_ptr<pcre2_match_data, PCRE2MatchDataDeleter> _match_data;
 
     // init helpers
-    static std::vector<std::string> process_vocab(
-        const std::vector<std::string>& tokens, 
-        const std::vector<uint32_t>& token_types
-    );
-    static std::unordered_set<std::string> extract_special_tokens(
+    static std::unordered_set<std::string> init_special_tokens(
         const std::vector<std::string>& vocab,
         const std::vector<uint32_t>& token_types
     );
-    static std::unordered_map<std::string, uint32_t> build_vocab_map(
+    static std::unordered_map<std::string, uint32_t> init_vocab_map(
         const std::vector<std::string>& vocab
     );
-    static std::vector<MergeRule> process_merge_rules(const std::vector<std::string>& merges);
-    static std::unique_ptr<pcre2_code, PCRE2Deleter> compile_regex_pattern();
-    static std::unique_ptr<pcre2_match_data, PCRE2MatchDataDeleter> create_match_data(
+    static std::vector<MergeRule> init_merge_rules(const std::vector<std::string>& merges);
+    static std::unique_ptr<pcre2_code, PCRE2Deleter> init_regex_pattern();
+    static std::unique_ptr<pcre2_match_data, PCRE2MatchDataDeleter> init_match_data(
         pcre2_code* pattern
     );
     

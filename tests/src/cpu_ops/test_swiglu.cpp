@@ -1,5 +1,5 @@
-#include "ops/test_swiglu.hpp"
-#include "minfer/ops/cpu_ops.hpp"
+#include "cpu_ops/test_swiglu.hpp"
+#include "minfer/ops/kernels.hpp"
 
 #include <cmath>
 

@@ -7,7 +7,7 @@ add_library(minfer
     models/qwen3/model.cpp
     models/qwen3/module.cpp
     models/qwen3/tokenizer.cpp
-    ops/cpu_ops.cpp
+    ops/kernels.cpp
     parsing/gguf.cpp
 )
 
@@ -28,8 +28,10 @@ if(APPLE AND METAL_FRAMEWORK)
 
     add_custom_command(
         OUTPUT ${METAL_C}
-        COMMAND xcrun metal -std=metal3.2 -fmetal-enable-logging -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
-        COMMAND xcrun metallib ${METAL_AIR} -o ${METAL_LIB}
+        # useful flags: -v, -fmetal-enable-logging
+        # useful env variables: MTL_LOG_LEVEL=MTLLogLevelDebug, MTL_LOG_TO_STDERR=1
+        COMMAND xcrun -sdk macosx metal -std=metal3.2 -target air64-apple-macos26.0 -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}
+        COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
         COMMAND xxd -i kernels.metallib > ${METAL_C}
         DEPENDS ${METAL_SHADER_SOURCE}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
