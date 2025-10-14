@@ -79,7 +79,7 @@ target_link_libraries(minfer
     PUBLIC pcre2-8
 )
 
-if(OpenMP_CXX_FOUND)
+if(ENABLE_THREADING AND OpenMP_CXX_FOUND)
     target_link_libraries(minfer PRIVATE OpenMP::OpenMP_CXX)
 endif()
 

@@ -19,11 +19,11 @@ void attn(float*, float*, const float*, const float*, const float*, int, int, in
 void rmsnorm(float*, const float*, const fp32_t&, int, float);
 void route(const float*, int*, float*, float*, const fp32_t&, int, int, int);
 
-void embed(float*, const TPtr, size_t, int);
+void embed(float*, const TPtr, uint32_t, size_t);
 
-void embed_fp32(float*, const fp32_t&, size_t, int);
-void embed_fp16(float*, const fp16_t&, size_t, int);
-void embed_bf16(float*, const bf16_t&, size_t, int);
+void embed_fp32(float*, const fp32_t&, uint32_t, size_t);
+void embed_fp16(float*, const fp16_t&, uint32_t, size_t);
+void embed_bf16(float*, const bf16_t&, uint32_t, size_t);
 
 void matmul(float*, const float*, const TPtr, size_t, int, int);
 

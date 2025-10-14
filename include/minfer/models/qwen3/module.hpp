@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "minfer/base/config.hpp"
 #include "minfer/base/module.hpp"
 
@@ -18,7 +20,7 @@ public:
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    void cpu_forward(float* x_out, int token_id);
+    void cpu_forward(float* x_out, uint32_t token_id);
     void metal_forward(MTL::Buffer* x_out, int token_id);
 };
 
@@ -53,8 +55,8 @@ private:
 class Qwen3GQA : public GQA {
 public:
     Qwen3GQA(
-        int block_idx, int d_model, size_t max_seq_len,
-        int n_heads, int n_kv_heads, int d_head, int d_rotary,
+        int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
+        size_t max_seq_len,
         float eps, float freq_base,
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -83,7 +85,8 @@ private:
 class Qwen3MoE : public MoE {
 public:
     Qwen3MoE(
-        int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
+        int d_model, int d_ff, int n_experts, int n_active_experts,
+        float eps,
         TPtr w_moenorm, TPtr w_router,
         TPtr ws_gate, TPtr ws_down, TPtr ws_up,
         DeviceType device = DeviceType::CPU

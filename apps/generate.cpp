@@ -188,17 +188,17 @@ int main(int argc, char* argv[]) {
     }
     
     // mode-specific parameters
-    float temperature, top_p, min_p, penalty_pres;
+    float temp, top_p, min_p, penalty_pres;
     size_t top_k;
     
     if (args.thinking_mode) {
-        temperature = 0.6f;
+        temp = 0.6f;
         penalty_pres = 1.5f;
         min_p = 0.0f;
         top_p = 0.95f;
         top_k = 20;
     } else {
-        temperature = 0.7f;
+        temp = 0.7f;
         penalty_pres = 1.5f;
         min_p = 0.0f;
         top_p = 0.80f;
@@ -211,14 +211,14 @@ int main(int argc, char* argv[]) {
     std::cout << "Mode: " << (args.thinking_mode ? "thinking" : "instruct") << std::endl;
     std::cout << "Max seq. length: " << args.max_seq_len << std::endl;
     std::cout << "Seed: " << args.seed << std::endl;
-    std::cout << "Temperature: " << temperature << std::endl;
+    std::cout << "Temperature: " << temp << std::endl;
     std::cout << "Top-p: " << top_p << std::endl;
     std::cout << "Top-k: " << top_k << std::endl;
     std::cout << "Min-p: " << min_p << std::endl;
     std::cout << "Presence penalty: " << penalty_pres << std::endl;
     std::cout << std::endl;
     
-    RunParams run_params(args.num_iters, args.max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, args.seed);
+    RunParams run_params(args.num_iters, args.max_seq_len, top_k, temp, top_p, min_p, penalty_pres, args.seed);
     Qwen3Model test(args.filepath, run_params);
     test.set_device(args.device);
     test.generate(args.prompt);

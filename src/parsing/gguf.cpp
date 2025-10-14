@@ -25,14 +25,7 @@ namespace {
         ptr += sizeof(T);
         return value;
     }
-
-    size_t mul(size_t a, size_t b) {
-        if (a != 0 && b > SIZE_MAX / a) {
-            throw std::runtime_error("Size overflow");
-        }
-        return a * b;
-    }
-
+    
     void check(size_t size, size_t max) {
         if (size > max) {
             throw std::runtime_error("Size too large");

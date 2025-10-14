@@ -79,10 +79,6 @@ void TestAttn::test_attention_weights() {
     attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
     
     float abs_score = 1/sqrtf(d_head)*3;
-    float scores[2] = {
-        abs_score,
-        -abs_score
-    };
     float weights[2] = {
         std::expf(abs_score)/(std::expf(abs_score) + std::expf(-abs_score)),
         std::expf(-abs_score)/(std::expf(abs_score) + std::expf(-abs_score))

@@ -21,7 +21,7 @@ struct fp16_t : base_t {
     fp16_t(std::byte* p) : base_t(p) {}
     uint16_t* ptr(size_t elem_offset = 0) const { return reinterpret_cast<uint16_t*>(data) + elem_offset; }
 
-    void dequantize_row(float* out, size_t row_idx, size_t d_in);
+    void dequantize_row(float* out, size_t row_idx, size_t d_in) const;
 };
 
 struct bf16_t : base_t {
@@ -29,5 +29,5 @@ struct bf16_t : base_t {
     bf16_t(std::byte* p) : base_t(p) {}
     uint16_t* ptr(size_t elem_offset = 0) const { return reinterpret_cast<uint16_t*>(data) + elem_offset; }
 
-    void dequantize_row(float* out, size_t row_idx, size_t d_in);
+    void dequantize_row(float* out, size_t row_idx, size_t d_in) const;
 };

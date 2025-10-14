@@ -16,7 +16,7 @@ public:
     
 private:
     size_t _vocab_size, _top_k;
-    float _temperature, _penalty_pres, _top_p, _min_p;
+    float _temp, _penalty_pres, _top_p, _min_p;
     std::vector<float> _logits, _probs;
     std::vector<uint32_t> _indices;
     std::unordered_set<uint32_t> _seen_token_ids;

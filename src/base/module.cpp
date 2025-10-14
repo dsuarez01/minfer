@@ -26,9 +26,9 @@ Embed::Embed(
     size_t vocab_size, int d_model, 
     TPtr weight, 
     DeviceType device
-) : vocab_size(vocab_size), d_model(d_model), 
-    weight(weight), 
-    BaseLayer(device) {
+) : BaseLayer(device),
+    vocab_size(vocab_size), d_model(d_model), 
+    weight(weight) {
     append_parameter(weight);
     set_read_bytes(weight->size_bytes / vocab_size); // only read a row of embed per forward pass
 }
@@ -39,9 +39,9 @@ Linear::Linear(
     int d_in, int d_out,
     TPtr weight, TPtr bias, 
     DeviceType device
-) : d_in(d_in), d_out(d_out), 
-    weight(weight), bias(bias), 
-    BaseLayer(device) {
+) : BaseLayer(device),
+    d_in(d_in), d_out(d_out), 
+    weight(weight), bias(bias) {
     assert((!bias || bias->dtype == DataType::F32) && "Only FP32 bias weight supported in linear");
 
     append_parameter(weight);
@@ -58,9 +58,9 @@ RMSNorm::RMSNorm(
     int dim, float eps, 
     TPtr weight, 
     DeviceType device
-) : dim(dim), eps(eps), 
-    weight(weight),
-    BaseLayer(device) {
+) : BaseLayer(device),
+    dim(dim), eps(eps), 
+    weight(weight) {
     assert(weight->dtype == DataType::F32 && "Dtype of this tensor should be F32");
     append_parameter(weight);
     set_read_bytes(weight->size_bytes);
@@ -69,21 +69,22 @@ RMSNorm::RMSNorm(
 // === GQA ===
 
 GQA::GQA(
-    int block_idx, int d_model, size_t max_seq_len,
-    int n_heads, int n_kv_heads, int d_head, int d_rotary,
+    int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
+    size_t max_seq_len,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
     DeviceType device
-) : block_idx(block_idx), d_model(d_model), max_seq_len(max_seq_len), 
-    n_heads(n_heads), n_kv_heads(n_kv_heads), d_head(d_head), d_rotary(d_rotary),
+) : BaseLayer(device),
+    block_idx(block_idx), d_model(d_model), n_heads(n_heads), n_kv_heads(n_kv_heads), 
+    d_head(d_head), d_rotary(d_rotary),
+    max_seq_len(max_seq_len),
     eps(eps), freq_base(freq_base),
     wq(wq), wk(wk), wv(wv), 
     wo(wo), wq_norm(wq_norm), wk_norm(wk_norm),
-    w_attnnorm(w_attnnorm),
-    BaseLayer(device) 
-{
+    w_attnnorm(w_attnnorm) {
+    
     assert(
         wq_norm->dtype == wk_norm->dtype &&
         wk_norm->dtype == w_attnnorm->dtype &&
@@ -115,13 +116,15 @@ GQA::GQA(
 // === MOE ===
 
 MoE::MoE(
-    int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
+    int d_model, int d_ff, int n_experts, int n_active_experts, 
+    float eps,
     TPtr w_moenorm, TPtr w_router,
     TPtr ws_gate, TPtr ws_down, TPtr ws_up,
     DeviceType device
-) : d_model(d_model), d_ff(d_ff), eps(eps), n_experts(n_experts), n_active_experts(n_active_experts),
-    w_moenorm(w_moenorm), w_router(w_router), ws_gate(ws_gate), ws_down(ws_down), ws_up(ws_up),
-    BaseLayer(device)
+) : BaseLayer(device),
+    d_model(d_model), d_ff(d_ff), n_experts(n_experts), n_active_experts(n_active_experts),
+    eps(eps),
+    w_moenorm(w_moenorm), w_router(w_router), ws_gate(ws_gate), ws_down(ws_down), ws_up(ws_up)
 {
 
     assert(
@@ -144,8 +147,8 @@ MoE::MoE(
 
     set_read_bytes(
         w_moenorm->size_bytes + (w_router ? w_router->size_bytes : 0)
-      + (ws_gate->size_bytes / n_experts) * n_active_experts
-      + (ws_down->size_bytes / n_experts) * n_active_experts
-      + (ws_up->size_bytes / n_experts) * n_active_experts
+      + (ws_gate->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
+      + (ws_down->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
+      + (ws_up->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
     );
 }

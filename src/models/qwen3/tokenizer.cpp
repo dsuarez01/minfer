@@ -16,16 +16,16 @@ Qwen3Tokenizer::Qwen3Tokenizer(
     const std::string& chat_template,
     uint32_t eos_id,
     uint32_t pad_id
-) : _token_types(token_types),
-    BaseTokenizer(eos_id, pad_id),
+) : BaseTokenizer(eos_id, pad_id),
     _vocab(tokens),
+    _token_types(token_types),
     _special_tokens(init_special_tokens(_vocab, token_types)),
-    _vocab_to_id(init_vocab_map(_vocab)),
     _merge_rules(init_merge_rules(merges)),
+    _vocab_to_id(init_vocab_map(_vocab)),
     _compiled_pattern(init_regex_pattern()),
     _match_data(init_match_data(_compiled_pattern.get()))
 {
-    if (tokens.size() != token_types.size()) { // tokens and token_types should always be same length
+    if (tokens.size() != token_types.size()) {
         throw std::invalid_argument("Token and token_type arrays must have same size");
     }
     

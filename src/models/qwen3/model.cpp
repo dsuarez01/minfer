@@ -30,8 +30,8 @@ Qwen3Model::Qwen3Model(const std::string& model_file, const RunParams& run_param
         std::string layer_prefix = "blk." + std::to_string(i) + ".";
         auto gqa = std::make_unique<Qwen3GQA>(
             i, // block_idx
-            config->d_model, config->user_max_seq_len,
-            config->n_heads, config->n_kv_heads, config->d_head, config->d_rotary,
+            config->d_model, config->n_heads, config->n_kv_heads, config->d_head, config->d_rotary,
+            config->user_max_seq_len,
             config->rms_norm_eps, config->freq_base,
             model_data->tensors.at(layer_prefix + "attn_q.weight"),
             model_data->tensors.at(layer_prefix + "attn_k.weight"),

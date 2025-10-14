@@ -57,10 +57,8 @@ public:
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
 protected:
-    int d_in;
-    int d_out;
-    TPtr weight;
-    TPtr bias;
+    int d_in, d_out;
+    TPtr weight, bias;
 };
 
 class RMSNorm : public BaseLayer {
@@ -81,8 +79,8 @@ protected:
 class GQA : public BaseLayer {
 public:
     GQA(
-        int block_idx, int d_model, size_t max_seq_len, 
-        int n_heads, int n_kv_heads, int d_head, int d_rotary,
+        int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
+        size_t max_seq_len,
         float eps, float freq_base,
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -92,9 +90,8 @@ public:
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
 protected:
+    int block_idx, d_model, n_heads, n_kv_heads, d_head, d_rotary;
     size_t max_seq_len;
-    int block_idx, d_model;
-    int n_heads, n_kv_heads, d_head, d_rotary;
     float eps, freq_base;
     
     TPtr wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm;
@@ -103,7 +100,8 @@ protected:
 class MoE : public BaseLayer {
 public:
     MoE(
-        int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
+        int d_model, int d_ff, int n_experts, int n_active_experts,
+        float eps,
         TPtr w_moenorm, TPtr w_router, TPtr ws_gate, TPtr ws_down, TPtr ws_up,
         DeviceType device
     );
@@ -112,6 +110,5 @@ public:
 protected:
     int d_model, d_ff, n_experts, n_active_experts;
     float eps;
-    
     TPtr w_moenorm, w_router, ws_gate, ws_down, ws_up;
 };

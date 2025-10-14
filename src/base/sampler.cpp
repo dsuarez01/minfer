@@ -8,18 +8,18 @@
 #include <cassert>
 
 Sampler::Sampler(const std::shared_ptr<Config> config) : 
-    _rng(config->seed),
-    _dist(0.0f,1.0f),
     _vocab_size(config->vocab_size),
-    _temperature(config->temperature),
     _top_k(config->top_k),
+    _temp(config->temp),
+    _penalty_pres(config->penalty_pres),
     _top_p(config->top_p),
     _min_p(config->min_p),
-    _penalty_pres(config->penalty_pres),
     _logits(config->vocab_size),
-    _indices(config->vocab_size),
     _probs(config->vocab_size),
-    _seen_token_ids()
+    _indices(config->vocab_size),
+    _seen_token_ids(),
+    _rng(config->seed),
+    _dist(0.0f,1.0f) 
 {    
     assert(_top_k > 0 && _top_k <= _vocab_size && "top_k > vocab_size or top_k <= 0");
     assert(_top_p >= 0.0f && _top_p <= 1.0f && "top_p not in [0.0f,1.0f]");
@@ -33,7 +33,7 @@ void Sampler::add_token(uint32_t token) {
 
 uint32_t Sampler::sample(const float* logits) {  
     // greedy selection, idx with highest logit
-    if (_temperature == 0.0f) {  
+    if (_temp == 0.0f) {  
         return std::max_element(logits, logits+_vocab_size)-logits;  
     }
     
@@ -97,7 +97,7 @@ uint32_t Sampler::sample(const float* logits) {
     // final softmax on remaining logits, temperature applied
     cumsum = 0.0f;
     for (size_t i=0; i<cutoff; ++i) {
-        _probs[_indices[i]] = std::expf((_logits[_indices[i]] - _logits[_indices[0]]) / _temperature);
+        _probs[_indices[i]] = std::expf((_logits[_indices[i]] - _logits[_indices[0]]) / _temp);
         cumsum += _probs[_indices[i]];
     }
     for (size_t i=0; i<cutoff; ++i) {

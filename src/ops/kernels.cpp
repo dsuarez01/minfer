@@ -178,59 +178,41 @@ void route(
 //     }
 // }
 
-void embed(float* x_out, const TPtr weight, size_t offset, int d_in) {
+void embed(float* x_out, const TPtr weight, uint32_t token_id, size_t d_in) {
     switch (weight->dtype) {
         case DataType::F32: {
             auto& typed_weight = weight->cpu_typed_view<DataType::F32>();
-            embed_fp32(x_out, typed_weight, offset, d_in);
+            embed_fp32(x_out, typed_weight, token_id, d_in);
             break;
         }
         case DataType::F16: {
             auto& typed_weight = weight->cpu_typed_view<DataType::F16>();
-            embed_fp16(x_out, typed_weight, offset, d_in);
+            embed_fp16(x_out, typed_weight, token_id, d_in);
             break;
         }
         case DataType::BF16: {
             auto& typed_weight = weight->cpu_typed_view<DataType::BF16>();
-            embed_bf16(x_out, typed_weight, offset, d_in);
+            embed_bf16(x_out, typed_weight, token_id, d_in);
             break;
         }
         default: throw std::runtime_error("Unhandled DataType"); break;
     }
 }
 
-void embed_fp32(float* x_out, const fp32_t& weight, size_t offset, int d_in) {
-    const float* w = weight.ptr(offset);
-    for (int i=0; i<d_in; ++i) {
+void embed_fp32(float* x_out, const fp32_t& weight, uint32_t token_id, size_t d_in) {
+    const float* w = weight.ptr(token_id * d_in);
+    for (size_t i=0; i<d_in; ++i) {
         x_out[i] = w[i];
     }
 }
 
-#if USE_ARM64 && USE_FP16
-void embed_fp16(float* x_out, const fp16_t& weight, size_t offset, int d_in) {
-    const __fp16* w = reinterpret_cast<const __fp16*>(weight.ptr(offset));
-    for (int i=0; i<d_in; ++i) {
-        x_out[i] = static_cast<float>(w[i]);
-    }
+void embed_fp16(float* x_out, const fp16_t& weight, uint32_t token_id, size_t d_in) {
+    weight.dequantize_row(x_out, token_id, d_in);
 }
-#else
-void embed_bf16(float*, const fp16_t&, size_t, int) {
-    assert(false && "Embed FP16: USE_ARM64 or USE_FP16 not enabled")
-}
-#endif
 
-#if USE_ARM64 && USE_BF16
-void embed_bf16(float* x_out, const bf16_t& weight, size_t offset, int d_in) {
-    const __bf16* w = reinterpret_cast<const __bf16*>(weight.ptr(offset));
-    for (int i=0; i<d_in; ++i) {
-        x_out[i] = vcvtah_f32_bf16(w[i]);
-    }
+void embed_bf16(float* x_out, const bf16_t& weight, uint32_t token_id, size_t d_in) {
+    weight.dequantize_row(x_out, token_id, d_in);
 }
-#else
-void embed_bf16(float*, const bf16_t&, size_t, int) {
-    assert(false && "Embed BF16: USE_ARM64 or USE_BF16 not enabled")
-}
-#endif
 
 
 void matmul(float* x_out, const float* x_in, const TPtr weight, size_t offset, int d_out, int d_in) {

@@ -259,16 +259,16 @@ ModelData::~ModelData() {}
 RunParams::RunParams(
     size_t num_iters,
     size_t max_seq_len, 
-    float temperature, 
-    size_t top_k, 
+    size_t top_k,
+    float temp,
     float top_p,
     float min_p,
     float penalty_pres,
     int seed
 ) : num_iters(num_iters),
     max_seq_len(max_seq_len), 
-    temperature(temperature),
-    top_k(top_k),  
+    top_k(top_k),
+    temp(temp),
     top_p(top_p),
     min_p(min_p),
     penalty_pres(penalty_pres),
@@ -328,7 +328,7 @@ Config::Config(const ModelData& model_data, const RunParams& runtime_params) {
     num_iters = runtime_params.num_iters;
     user_max_seq_len = runtime_params.max_seq_len;
     assert(user_max_seq_len <= model_max_seq_len && "user supplied max_seq_len > model_max_seq_len (n_ctx)");
-    temperature = runtime_params.temperature;
+    temp = runtime_params.temp;
     top_k = runtime_params.top_k;
     top_p = runtime_params.top_p;
     min_p = runtime_params.min_p;

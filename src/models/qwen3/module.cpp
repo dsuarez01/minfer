@@ -26,8 +26,8 @@ void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
     }
 }
 
-void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
-    embed(x_out, weight, token_id*d_model, d_model);
+void Qwen3Embed::cpu_forward(float* x_out, uint32_t token_id) {
+    embed(x_out, weight, token_id, d_model);
 }
 
 void Qwen3Embed::metal_forward(MTL::Buffer* x_out, int token_id) {
@@ -137,16 +137,16 @@ void Qwen3FinalRMSNorm::metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in) {
 // === GQA ===
 
 Qwen3GQA::Qwen3GQA(
-    int block_idx, int d_model, size_t max_seq_len, 
-    int n_heads, int n_kv_heads, int d_head, int d_rotary,
+    int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
+    size_t max_seq_len,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
     DeviceType device
 ) : GQA(
-        block_idx, d_model, max_seq_len, 
-        n_heads, n_kv_heads, d_head, d_rotary,
+        block_idx, d_model, n_heads, n_kv_heads, d_head, d_rotary,
+        max_seq_len,
         eps, freq_base, 
         wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm, 
         device
@@ -201,7 +201,7 @@ void Qwen3GQA::cpu_forward(
 
     // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_head]
     size_t cache_offset = block_idx * max_seq_len * n_kv_heads * d_head + cur_pos * n_kv_heads * d_head;
-    for (int i=0; i < n_kv_heads * d_head; ++i) {
+    for (int i=0; i < n_kv_heads*d_head; ++i) {
         k_cache[cache_offset+i] = k_buf[i];
         v_cache[cache_offset+i] = v_buf[i];
     }
@@ -395,7 +395,8 @@ void Qwen3GQA::metal_forward(
 // === MOE ===
 
 Qwen3MoE::Qwen3MoE(
-    int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
+    int d_model, int d_ff, int n_experts, int n_active_experts, 
+    float eps,
     TPtr w_moenorm, TPtr w_router,
     TPtr ws_gate, TPtr ws_down, TPtr ws_up,
     DeviceType device

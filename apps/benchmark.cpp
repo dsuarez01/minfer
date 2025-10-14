@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     size_t num_iters = max_seq_len;
 
     // these have to be set, but are unused
-    float temperature = 0.0f;
+    float temp = 0.0f;
     float penalty_pres = 0.0f;
     float min_p = 0.0f;
     float top_p = 0.0f;
@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Seed: " << args.seed << std::endl;
     std::cout << std::endl;
     
-    RunParams run_params(num_iters, max_seq_len, temperature, top_k, top_p, min_p, penalty_pres, args.seed);
+    RunParams run_params(num_iters, max_seq_len, top_k, temp, top_p, min_p, penalty_pres, args.seed);
     Qwen3Model test(args.filepath, run_params);
     test.set_device(args.device);
     test.benchmark();

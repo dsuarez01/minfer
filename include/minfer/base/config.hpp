@@ -35,15 +35,15 @@ struct ModelData {
 };
 
 struct RunParams {
-    size_t max_seq_len, top_k, num_iters;
+    size_t num_iters, max_seq_len, top_k;
+    float temp, top_p, min_p, penalty_pres;
     int seed;
-    float temperature, top_p, min_p, penalty_pres;
     
     RunParams(
         size_t num_iters,
         size_t max_seq_len,
-        float temperature, 
         size_t top_k,
+        float temp,
         float top_p,
         float min_p,
         float penalty_pres,
@@ -69,7 +69,7 @@ struct Config {
     // run params
     size_t user_max_seq_len, top_k, num_iters;
     int seed;
-    float temperature, top_p, min_p, penalty_pres;
+    float temp, top_p, min_p, penalty_pres;
 
     Config(const ModelData& model_data, const RunParams& runtime_params);
 };
