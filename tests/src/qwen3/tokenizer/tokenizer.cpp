@@ -1,6 +1,12 @@
+#include "extern/nlohmann/json.hpp"
 #include "qwen3/tokenizer/tokenizer.hpp"
-#include "minfer/config/config.hpp"
+#include "minfer/base/config.hpp"
+
 #include <iostream>
+#include <memory>
+#include <vector>
+#include <string>
+#include <cstdint>
 
 TestTokenizer::TestTokenizer(const std::string& name) : TestBase(name) {}
 
@@ -12,12 +18,12 @@ bool TestTokenizer::init_from_gguf(const std::string& gguf_path) {
     }
     
     try {
-        auto tokens = model_data.metadata.at("tokenizer.ggml.tokens").get<std::vector<std::string>>();
-        auto merges = model_data.metadata.at("tokenizer.ggml.merges").get<std::vector<std::string>>();
-        auto token_types = model_data.metadata.at("tokenizer.ggml.token_type").get<std::vector<uint32_t>>();
-        auto chat_template = model_data.metadata.at("tokenizer.chat_template").get<std::string>();
-        auto eos_id = model_data.metadata.at("tokenizer.ggml.eos_token_id").get<uint32_t>();
-        auto pad_id = model_data.metadata.at("tokenizer.ggml.padding_token_id").get<uint32_t>();
+        auto tokens = model_data.metadata->at("tokenizer.ggml.tokens").get<std::vector<std::string>>();
+        auto merges = model_data.metadata->at("tokenizer.ggml.merges").get<std::vector<std::string>>();
+        auto token_types = model_data.metadata->at("tokenizer.ggml.token_type").get<std::vector<uint32_t>>();
+        auto chat_template = model_data.metadata->at("tokenizer.chat_template").get<std::string>();
+        auto eos_id = model_data.metadata->at("tokenizer.ggml.eos_token_id").get<uint32_t>();
+        auto pad_id = model_data.metadata->at("tokenizer.ggml.padding_token_id").get<uint32_t>();
         
         tokenizer = std::make_unique<Qwen3Tokenizer>(
             tokens, merges, token_types, chat_template, eos_id, pad_id

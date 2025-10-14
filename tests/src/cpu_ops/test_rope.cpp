@@ -14,7 +14,7 @@ void TestRope::test_il_rope_zero_position() {
     float freq_base = 10000.0f;
     int pos = 0;
     
-    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // at pos 0, all angles are 0: cos(0)=1, sin(0)=0
     // output = input here
@@ -31,7 +31,7 @@ void TestRope::test_il_rope_single_head() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // Pair (0,1): freq = 1/10000^(0/4) = 1, angle = 1*1 = 1
     // output[0] = cos(1)*1 - sin(1)*0 = cos(1)
@@ -54,7 +54,7 @@ void TestRope::test_il_rope_partial_rotary() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    cpu::il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    il_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // first 4 dims rotated
     assert_true(output[0] != 1.0f || output[1] != 1.0f, "First pair rotated");
@@ -74,7 +74,7 @@ void TestRope::test_neox_rope_zero_position() {
     float freq_base = 10000.0f;
     int pos = 0;
     
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // at pos 0, all angles are 0
     // output = input
@@ -91,7 +91,7 @@ void TestRope::test_neox_rope_single_head() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // Pair (0,2): i_0=0, freq = 1/10000^(2*0/4) = 1, angle = 1
     // output[0] = cos(1)*1 - sin(1)*0 = cos(1)
@@ -114,7 +114,7 @@ void TestRope::test_neox_rope_partial_rotary() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    cpu::neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    neox_rope(output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // first d_rotary/2 = 4/2 = 2 pairs are rotated
     assert_true(output[0] != 1.0f || output[2] != 1.0f, "Pair (0,2) rotated");
@@ -135,12 +135,12 @@ void TestRope::test_in_place_operation() {
     int pos = 0;
     
     // test IL RoPE in-place at pos=0 (should be identity)
-    cpu::il_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
+    il_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
     assert_arrays_equal(expected, data, d_flat, 1e-6f, "IL RoPE in-place at pos 0");
     
     // reset, test NeoX RoPE in-place at pos=0
     for (int i=0; i<4; i++) data[i] = expected[i];
-    cpu::neox_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
+    neox_rope(data, data, d_flat, d_head, d_rotary, freq_base, pos);
     assert_arrays_equal(expected, data, d_flat, 1e-6f, "NeoX RoPE in-place at pos 0");
 }
 
@@ -154,8 +154,8 @@ void TestRope::test_multiple_heads() {
     float freq_base = 10000.0f;
     int pos = 1;
     
-    cpu::il_rope(il_output, input, d_flat, d_head, d_rotary, freq_base, pos);
-    cpu::neox_rope(neox_output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    il_rope(il_output, input, d_flat, d_head, d_rotary, freq_base, pos);
+    neox_rope(neox_output, input, d_flat, d_head, d_rotary, freq_base, pos);
     
     // each head is rotated in the exact same way
     // Head 0: indices 0-3, Head 1: indices 4-7

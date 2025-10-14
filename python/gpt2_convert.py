@@ -9,7 +9,7 @@ from gguf import GGUFReader, GGUFWriter, GGUFValueType, GGMLQuantizationType, Re
 
 # see https://github.com/zeux/calm/blob/main/tools/convert.py
 def create_gpt2_byte_codec():
-    """ Reverses the GPT-2 tokenizer byte mapping """
+    """ Codec for GPT-2 tokenizer byte mapping """
     # codepoints of printable chars not remapped
     bs = (list(range(ord("!"), ord("~") + 1)) + 
           list(range(ord("¡"), ord("¬") + 1)) + 

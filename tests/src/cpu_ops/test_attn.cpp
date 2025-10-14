@@ -17,7 +17,7 @@ void TestAttn::test_single_position() {
     float att_scores[1] = {0.0f};
     float att_out[4] = {0.0f};
     
-    cpu::attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
+    attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
     
     assert_equal(1.0f, att_scores[0], 1e-6f, "Single position attn weight");
     
@@ -44,7 +44,7 @@ void TestAttn::test_multiple_positions() {
     float att_scores[3] = {0.0f};
     float att_out[2] = {0.0f};
     
-    cpu::attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
+    attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
     
     // attn scores sum to 1
     float sum = att_scores[0] + att_scores[1] + att_scores[2];
@@ -76,7 +76,7 @@ void TestAttn::test_attention_weights() {
     float att_scores[2] = {0.0f};
     float att_out[3] = {0.0f};
     
-    cpu::attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
+    attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
     
     float abs_score = 1/sqrtf(d_head)*3;
     float scores[2] = {
@@ -111,7 +111,7 @@ void TestAttn::test_output_computation() {
     float att_scores[2] = {0.0f};
     float att_out[2] = {0.0f};
     
-    cpu::attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
+    attn(att_scores, att_out, q_head, kh, vh, seq_len, d_head, kv_dim);
     
     // output (very) close to first value vector
     assert_true(std::abs(att_out[0] - 5.0f) < 0.1f, "Output dominated by high-attention position");

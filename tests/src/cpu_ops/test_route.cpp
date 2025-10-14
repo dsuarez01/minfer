@@ -1,5 +1,8 @@
 #include "cpu_ops/test_route.hpp"
 #include "minfer/ops/kernels.hpp"
+#include "minfer/base/types.hpp"
+
+#include <cstddef>
 
 TestRoute::TestRoute(const std::string& name) : TestBase(name) {}
 
@@ -11,26 +14,25 @@ void TestRoute::test_single_expert() {
     float x_norm[16] = {1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f,
                         3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f};
     
-    float w_router[64]; // 4 experts × 16 d_model
+    float w_router_arr[64]; // 4 experts × 16 d_model
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 16; j++) {
             if (i == 3) {
-                w_router[i * 16 + j] = 1.0f; // expert 3 gets highest score
+                w_router_arr[i * 16 + j] = 1.0f; // expert 3 gets highest score
             } else if (i == j % 3) {
-                w_router[i * 16 + j] = 1.0f;
+                w_router_arr[i * 16 + j] = 1.0f;
             } else {
-                w_router[i * 16 + j] = 0.0f;
+                w_router_arr[i * 16 + j] = 0.0f;
             }
         }
     }
+    auto w_router = fp32_t(reinterpret_cast<std::byte*>(w_router_arr));
     
     int active_experts[1] = {0};
-    float active_experts_scores[1] = {0.0f};
     float active_experts_weights[1] = {0.0f};
     float moe_scores[4] = {0.0f};
     
-    cpu::route(x_norm, active_experts, active_experts_scores, active_experts_weights,
-          moe_scores, w_router, d_model, n_experts, n_active_experts);
+    route(x_norm, active_experts, active_experts_weights, moe_scores, w_router, d_model, n_experts, n_active_experts);
     
     assert_equal(3, active_experts[0], 1e-6f, "Highest scoring expert selected");
     assert_equal(1.0f, active_experts_weights[0], 1e-6f, "Single expert assigned weight 1.0");
@@ -44,21 +46,22 @@ void TestRoute::test_top_k_selection() {
     float x_norm[16] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
                         1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     
-    float w_router[80]; // 5 experts × 16 d_model
+    float w_router_arr[80]; // 5 experts × 16 d_model
     for (int i = 0; i < 5; i++) {
         float weight = (i == 0) ? 2.0f : (i == 1) ? 4.0f : (i == 2) ? 1.0f : 
                       (i == 3) ? 6.0f : 3.0f;
         for (int j = 0; j < 16; j++) {
-            w_router[i * 16 + j] = weight;
+            w_router_arr[i * 16 + j] = weight;
         }
     }
     
+    auto w_router = fp32_t(reinterpret_cast<std::byte*>(w_router_arr));
+    
     int active_experts[3] = {0};
-    float active_experts_scores[3] = {0.0f};
     float active_experts_weights[3] = {0.0f};
     float moe_scores[5] = {0.0f};
     
-    cpu::route(x_norm, active_experts, active_experts_scores, active_experts_weights,
+    route(x_norm, active_experts, active_experts_weights,
           moe_scores, w_router, d_model, n_experts, n_active_experts);
     
     assert_equal(3, active_experts[0], 1e-6f, "1st expert chosen, highest scoring");
@@ -74,23 +77,23 @@ void TestRoute::test_score_normalization() {
     float x_norm[16] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     
-    float w_router[48]; // 3 experts × 16 d_model
+    float w_router_arr[48]; // 3 experts × 16 d_model
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 16; j++) {
             if (j == 0) {
-                w_router[i * 16 + j] = (i == 0) ? 10.0f : (i == 1) ? 5.0f : 1.0f;
+                w_router_arr[i * 16 + j] = (i == 0) ? 10.0f : (i == 1) ? 5.0f : 1.0f;
             } else {
-                w_router[i * 16 + j] = 0.0f;
+                w_router_arr[i * 16 + j] = 0.0f;
             }
         }
     }
+    auto w_router = fp32_t(reinterpret_cast<std::byte*>(w_router_arr));
     
     int active_experts[2] = {0};
-    float active_experts_scores[2] = {0.0f};
     float active_experts_weights[2] = {0.0f};
     float moe_scores[3] = {0.0f};
     
-    cpu::route(x_norm, active_experts, active_experts_scores, active_experts_weights,
+    route(x_norm, active_experts, active_experts_weights,
           moe_scores, w_router, d_model, n_experts, n_active_experts);
     
     float weight_sum = active_experts_weights[0] + active_experts_weights[1];
@@ -106,20 +109,21 @@ void TestRoute::test_expert_ordering() {
     float x_norm[16] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     
-    float w_router[64]; // 4 experts × 16 d_model
+    float w_router_arr[64]; // 4 experts × 16 d_model
     float weights[4] = {2.0f, 4.0f, 1.0f, 3.0f}; // scores: 2, 4, 1, 3
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 16; j++) {
-            w_router[i * 16 + j] = (j == 0) ? weights[i] : 0.0f;
+            w_router_arr[i * 16 + j] = (j == 0) ? weights[i] : 0.0f;
         }
     }
+    auto w_router = fp32_t(reinterpret_cast<std::byte*>(w_router_arr));
+
     
     int active_experts[4] = {0};
-    float active_experts_scores[4] = {0.0f};
     float active_experts_weights[4] = {0.0f};
     float moe_scores[4] = {0.0f};
     
-    cpu::route(x_norm, active_experts, active_experts_scores, active_experts_weights,
+    route(x_norm, active_experts, active_experts_weights,
           moe_scores, w_router, d_model, n_experts, n_active_experts);
     
     assert_equal(1, active_experts[0], 1e-6f, "Expert 1 ranked first (score=4)");
@@ -127,9 +131,9 @@ void TestRoute::test_expert_ordering() {
     assert_equal(0, active_experts[2], 1e-6f, "Expert 0 ranked third (score=2)");
     assert_equal(2, active_experts[3], 1e-6f, "Expert 2 ranked fourth (score=1)");
     
-    assert_true(active_experts_scores[0] >= active_experts_scores[1], "Scores in descending order");
-    assert_true(active_experts_scores[1] >= active_experts_scores[2], "Scores in descending order");
-    assert_true(active_experts_scores[2] >= active_experts_scores[3], "Scores in descending order");
+    assert_true(active_experts_weights[0] >= active_experts_weights[1], "Weights in descending order");
+    assert_true(active_experts_weights[1] >= active_experts_weights[2], "Weights in descending order");
+    assert_true(active_experts_weights[2] >= active_experts_weights[3], "Weights in descending order");
 }
 
 void TestRoute::run_all_tests() {

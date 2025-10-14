@@ -12,6 +12,7 @@ private:
     void test_large_values();
     void test_fp16_matmul();
     void test_bf16_matmul();
+    void test_offset();
 
 public:
     explicit TestMatmul(const std::string& name);

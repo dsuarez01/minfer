@@ -10,7 +10,7 @@ void TestSoftmax::test_uniform() {
     float output[3] = {0.0f};
     float expected[3] = {1.0f/3.0f, 1.0f/3.0f, 1.0f/3.0f}; // uniform dist. weights
     
-    cpu::softmax(output, input, 3);
+    softmax(output, input, 3);
     
     assert_arrays_equal(expected, output, 3, 1e-6f, "Uniform input softmax");
 }
@@ -20,7 +20,7 @@ void TestSoftmax::test_one_hot() {
     float output[4] = {0.0f};
     float expected[4] = {0.0f, 1.0f, 0.0f, 0.0f}; // approx. one-hot at index 1
     
-    cpu::softmax(output, input, 4);
+    softmax(output, input, 4);
     
     assert_arrays_equal(expected, output, 4, 1e-6f, "One-hot softmax");
 }
@@ -30,7 +30,7 @@ void TestSoftmax::test_large_values() {
     float input[3] = {1000.0f, 1001.0f, 999.0f};
     float output[3] = {0.0f};
     
-    cpu::softmax(output, input, 3);
+    softmax(output, input, 3);
     
     // no nan, inf
     for (int i = 0; i < 3; i++) {
@@ -46,7 +46,7 @@ void TestSoftmax::test_sum_to_one() {
     float input[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
     float output[5] = {0.0f};
     
-    cpu::softmax(output, input, 5);
+    softmax(output, input, 5);
     
     float sum = 0.0f;
     for (int i = 0; i < 5; i++) {

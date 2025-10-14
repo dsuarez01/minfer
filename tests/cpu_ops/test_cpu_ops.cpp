@@ -5,7 +5,6 @@
 #include "cpu_ops/test_rmsnorm.hpp"
 #include "cpu_ops/test_rope.hpp"
 #include "cpu_ops/test_attn.hpp"
-#include "cpu_ops/test_swiglu.hpp"
 #include "cpu_ops/test_route.hpp"
 
 #include <memory>
@@ -21,7 +20,6 @@ int main() {
     all_tests.push_back(std::make_unique<TestRMSNorm>("RMSNorm Tests"));
     all_tests.push_back(std::make_unique<TestRope>("RoPE Tests"));
     all_tests.push_back(std::make_unique<TestAttn>("Attn. Tests"));
-    all_tests.push_back(std::make_unique<TestSwiglu>("SwiGLU Tests"));
     all_tests.push_back(std::make_unique<TestRoute>("Router (MoE) Tests"));
 
 

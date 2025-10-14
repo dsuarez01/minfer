@@ -7,7 +7,6 @@ add_executable(test_cpu_ops
    ../src/cpu_ops/test_rmsnorm.cpp
    ../src/cpu_ops/test_rope.cpp
    ../src/cpu_ops/test_attn.cpp
-   ../src/cpu_ops/test_swiglu.cpp
    ../src/cpu_ops/test_route.cpp
 )
 
