@@ -1,7 +1,11 @@
 #pragma once
 
 #include "minfer/base/model.hpp"
-#include "minfer/models/qwen3/module.hpp"
+
+#include <string>
+
+// forward decls.
+struct RunParams;
 
 class Qwen3Model : public BaseModel {
 

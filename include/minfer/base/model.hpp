@@ -1,21 +1,28 @@
 #pragma once
 
-#include "minfer/config/config.hpp"
-#include "minfer/base/module.hpp"
-#include "minfer/base/tokenizer.hpp"
-#include "minfer/base/sampler.hpp"
-
 #include <string>
+#include <vector>
+
+// forward decls.
+struct ModelData;
+struct Config;
+struct RunState;
+struct RunParams;
+struct GenStats;
+enum class DeviceType : int;
+class BaseLayer;
+class BaseTokenizer;
+class Sampler;
 
 class BaseModel {
 public:
-    virtual ~BaseModel() = default;
+    virtual ~BaseModel();
     
     void generate(std::string& input_text);
     void benchmark();
     void set_device(DeviceType target_device);
     DeviceType get_device() const;
-    size_t get_read_bytes() const; // represents bytes read from weights per forward pass
+    size_t get_read_bytes() const;
 
 protected:
     std::unique_ptr<ModelData> model_data;
@@ -29,7 +36,7 @@ protected:
     virtual void forward(std::shared_ptr<RunState> run_state);
 
 private:
-    DeviceType _device = DeviceType::CPU;
-    size_t _read_bytes = 0; // represents bytes read from weights per forward pass
+    DeviceType _device;
+    size_t _read_bytes;
     std::vector<std::unique_ptr<BaseLayer>> _layers;
 };

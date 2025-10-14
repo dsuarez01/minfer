@@ -7,15 +7,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <regex>
+#include <cstddef>
 
 namespace {
     // mutually recursive fcns need forward defn
-    GGUFString read_str(uint8_t*& ptr, uint8_t* end, size_t file_size);
-    GGUFArray read_arr(uint8_t*& ptr, uint8_t* end, size_t file_size);
-    MetadataValue read_val(uint8_t*& ptr, ValueType type, uint8_t* end, size_t file_size);
+    GGUFString read_str(std::byte*& ptr, std::byte* end, size_t file_size);
+    GGUFArray read_arr(std::byte*& ptr, std::byte* end, size_t file_size);
+    MetadataValue read_val(std::byte*& ptr, ValueType type, std::byte* end, size_t file_size);
 
     template<typename T>
-    T read(uint8_t*& ptr, uint8_t* end) {
+    T read(std::byte*& ptr, std::byte* end) {
         if (ptr + sizeof(T) > end) {
             throw std::runtime_error("Read past file end");
         }
@@ -51,7 +52,7 @@ namespace {
         return std::regex_match(key, std::regex("^[a-z0-9_]+(?:\\.[a-z0-9_]+)*$"));
     }
 
-    GGUFString read_str(uint8_t*& ptr, uint8_t* end, size_t file_size) {
+    GGUFString read_str(std::byte*& ptr, std::byte* end, size_t file_size) {
         GGUFString str;
         str.len = read<uint64_t>(ptr, end);
         
@@ -68,7 +69,7 @@ namespace {
         return str;
     }
 
-    GGUFArray read_arr(uint8_t*& ptr, uint8_t* end, size_t file_size) {
+    GGUFArray read_arr(std::byte*& ptr, std::byte* end, size_t file_size) {
         GGUFArray arr;
         arr.type = read<ValueType>(ptr, end);
         arr.len = read<uint64_t>(ptr, end);
@@ -83,7 +84,7 @@ namespace {
         return arr;
     }
 
-    MetadataValue read_val(uint8_t*& ptr, ValueType type, uint8_t* end, size_t file_size) {
+    MetadataValue read_val(std::byte*& ptr, ValueType type, std::byte* end, size_t file_size) {
         switch (type) {
             case ValueType::UINT8:   return read<uint8_t>(ptr, end);
             case ValueType::INT8:    return read<int8_t>(ptr, end);
@@ -95,7 +96,7 @@ namespace {
             case ValueType::UINT64:  return read<uint64_t>(ptr, end);
             case ValueType::INT64:   return read<int64_t>(ptr, end);
             case ValueType::FLOAT64: return read<double>(ptr, end);
-            case ValueType::BOOL:    return static_cast<bool>(read<uint8_t>(ptr, end));
+            case ValueType::BOOL:    return static_cast<bool>(read<std::byte>(ptr, end));
             case ValueType::STRING:  return read_str(ptr, end, file_size);
             case ValueType::ARRAY:   return read_arr(ptr, end, file_size);
             default:
@@ -171,9 +172,9 @@ int GGUFFile::from_file(const std::string& filename) {
 
     close(fd); // doesn't invalidate mapping
 
-    uint8_t* ptr = static_cast<uint8_t*>(data);
-    uint8_t* start = ptr;
-    uint8_t* end = ptr + size;
+    std::byte* ptr = static_cast<std::byte*>(data);
+    std::byte* start = ptr;
+    std::byte* end = ptr + size;
 
     try {
         header.magic = read<uint32_t>(ptr, end);

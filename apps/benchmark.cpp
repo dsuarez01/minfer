@@ -1,4 +1,4 @@
-#include "minfer/config/config.hpp"
+#include "minfer/base/config.hpp"
 #include "minfer/models/qwen3/model.hpp"
 
 #include <iostream>

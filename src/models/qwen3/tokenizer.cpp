@@ -1,5 +1,8 @@
 #include "minfer/models/qwen3/tokenizer.hpp"
+
+#include "extern/minja/chat-template.hpp"
 #include "extern/nlohmann/json.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cassert>
@@ -36,6 +39,8 @@ Qwen3Tokenizer::Qwen3Tokenizer(
         "<|im_end|>"
     );
 }
+
+Qwen3Tokenizer::~Qwen3Tokenizer() = default;
 
 std::vector<uint32_t> Qwen3Tokenizer::encode(const std::string& text) {
     if (text.empty()) return {};

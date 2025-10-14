@@ -1,4 +1,5 @@
 #include "minfer/base/sampler.hpp"
+#include "minfer/base/config.hpp"
 
 #include <iostream>
 #include <algorithm>

@@ -1,5 +1,13 @@
+#include "extern/nlohmann/json.hpp"
+
 #include "minfer/base/model.hpp"
-#include "minfer/config/metal_config.hpp"
+#include "minfer/base/module.hpp"
+#include "minfer/base/config.hpp"
+#include "minfer/base/tokenizer.hpp"
+#include "minfer/base/stats.hpp"
+#include "minfer/base/sampler.hpp"
+
+#include "minfer/interfaces/metal_interface.hpp"
 
 #include <iostream>
 
@@ -12,8 +20,13 @@ BaseModel::BaseModel(const std::string& model_file, const RunParams& run_params)
     sampler = std::make_unique<Sampler>(config);
     run_state = std::make_shared<RunState>(config);
     stats = std::make_unique<GenStats>();
+
+    _device = DeviceType::CPU;
+    _read_bytes = 0;
     // derived responsible for setting rest
 }
+
+BaseModel::~BaseModel() = default;
 
 void BaseModel::append_layer(std::unique_ptr<BaseLayer> layer) {
     _read_bytes += layer->get_read_bytes();
@@ -132,8 +145,8 @@ void BaseModel::generate(std::string& input_text) {
     while (generated < num_iters) {
 
         float* logits_ptr = (get_device() == DeviceType::METAL) 
-            ? static_cast<float*>(MetalManager::buf_contents(run_state->logits.get()))
-            : run_state->logits.get();
+            ? static_cast<float*>(MetalManager::cpu_ptr(std::get<MTL::Buffer*>(run_state->logits)))
+            : std::get<float*>(run_state->logits);
 
         uint32_t next_token = sampler->sample(logits_ptr);
 

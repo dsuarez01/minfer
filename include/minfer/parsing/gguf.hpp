@@ -203,7 +203,7 @@ struct GGUFFile {
     // Each tensor's data must be stored within this array, and located through its `tensor_infos` entry.
     // The offset of each tensor's data must be a multiple of `ALIGNMENT`, and the space between tensors
     // should be padded to `ALIGNMENT` bytes.
-    uint8_t* tensor_data;
+    std::byte* tensor_data;
     size_t tensor_data_size;
 
     int from_file(const std::string& filename);

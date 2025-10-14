@@ -1,10 +1,12 @@
 #pragma once
 
-#include "minfer/config/config.hpp"
 #include <cstdint>
 #include <random>
 #include <vector>
 #include <unordered_set>
+
+// forward decls.
+struct Config;
 
 class Sampler {
 public:

@@ -1,9 +1,12 @@
 add_library(minfer
+    base/config.cpp
     base/model.cpp
     base/module.cpp
     base/sampler.cpp
+    base/stats.cpp
+    base/tensor.cpp
     base/tokenizer.cpp
-    config/config.cpp
+    base/types.cpp
     models/qwen3/model.cpp
     models/qwen3/module.cpp
     models/qwen3/tokenizer.cpp
@@ -18,7 +21,7 @@ find_library(METAL_FRAMEWORK Metal QUIET)
 if(APPLE AND METAL_FRAMEWORK)
     target_compile_definitions(minfer PRIVATE USE_METAL)
 
-    target_sources(minfer PRIVATE config/metal_config.mm)
+    target_sources(minfer PRIVATE interfaces/metal_interface.mm)
 
     # to precompile the kernels written in MSL
     set(METAL_SHADER_SOURCE ${CMAKE_SOURCE_DIR}/src/ops/kernels.metal)

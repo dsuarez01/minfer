@@ -1,7 +1,6 @@
 #pragma once
 
 #include "minfer/base/tokenizer.hpp"
-#include "extern/minja/chat-template.hpp"
 
 #include <vector>
 #include <string>
@@ -13,6 +12,11 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
+// forward decls
+namespace minja {
+    class chat_template;
+}
+
 class Qwen3Tokenizer : public BaseTokenizer {
 public:
     Qwen3Tokenizer(
@@ -23,6 +27,8 @@ public:
         uint32_t eos_id,
         uint32_t pad_id
     );
+    
+    ~Qwen3Tokenizer();
     
     std::vector<uint32_t> encode(const std::string& text) override;
     std::string decode(const std::vector<uint32_t>& tokens) override;

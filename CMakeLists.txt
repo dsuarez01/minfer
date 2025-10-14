@@ -33,7 +33,12 @@ endif()
 # for now, only arm64 procs are supported (TO-DO: improve exception handling)
 function(apply_arch_flags target_name)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+        target_compile_definitions(${target_name} PRIVATE USE_ARM64=1)    
         target_compile_options(${target_name} PRIVATE -march=armv8.6-a+fp16+bf16 -mtune=apple-m2)
+        target_compile_definitions(${target_name} PRIVATE
+            USE_FP16=1
+            USE_BF16=1
+        )
     endif()
 endfunction()
 

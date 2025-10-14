@@ -1,73 +1,45 @@
 #include "minfer/models/qwen3/module.hpp"
 #include "minfer/ops/kernels.hpp"
-#include "minfer/config/metal_config.hpp"
+#include "minfer/base/tensor.hpp"
+#include "minfer/base/types.hpp"
+
+#include "minfer/interfaces/metal_interface.hpp"
 
 #include <cassert>
-
-// === TYPE CONVERSION UTILS ===
-namespace {
-    template<typename T, typename Tag>
-    static float convert_to_float(T val) {
-        if constexpr (std::is_same_v<T, float>) {
-            return val;
-        } else if constexpr (std::is_same_v<T, uint16_t>) {
-            if constexpr (std::is_same_v<Tag, fp16_tag>) {
-                return fp16_to_float(val);
-            } else if constexpr (std::is_same_v<Tag, bf16_tag>) {
-                return bf16_to_float(val);
-            } else {
-                static_assert(false && "Unsupported tag for uint16_t conversion");
-            }
-        } else {
-            static_assert(false && "Unsupported type in convert_to_float");
-        }
-    }
-}
+#include <iostream>
 
 // === EMBED ===
 
 Qwen3Embed::Qwen3Embed(
     size_t vocab_size, int d_model, 
-    TPtr weight, 
-    DataType qdtype, DeviceType device
-) : Embed(vocab_size, d_model, weight, qdtype, device) {
-
-    set_read_bytes(weight->size_bytes / vocab_size); // only read a row of embed per forward pass
-}
+    TPtr weight,
+    DeviceType device
+) : Embed(vocab_size, d_model, weight, device) {}
 
 void Qwen3Embed::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == DeviceType::CPU) {
-        switch (get_qdtype()) {
-            case DataType::F32: Qwen3Embed::cpu_forward<float, float_tag>(run_state->x.get(), run_state->token_id); break;
-            case DataType::F16: Qwen3Embed::cpu_forward<fp16_t, fp16_tag>(run_state->x.get(), run_state->token_id); break;
-            case DataType::BF16: Qwen3Embed::cpu_forward<bf16_t, bf16_tag>(run_state->x.get(), run_state->token_id); break;
-            default: assert(false && "Qwen3Embed has invalid or unsupported qdtype"); break;
-        }
+        Qwen3Embed::cpu_forward(std::get<float*>(run_state->x), run_state->token_id);
     } else if (get_device() == DeviceType::METAL) {
-        Qwen3Embed::metal_forward(run_state->x.get(), run_state->token_id);
+        Qwen3Embed::metal_forward(std::get<MTL::Buffer*>(run_state->x), run_state->token_id);
     } else {
         assert(false && "Qwen3Embed support for this device not implemented yet");
     }
 }
 
-template <typename WeightType, typename Tag>
 void Qwen3Embed::cpu_forward(float* x_out, int token_id) {
-    const WeightType* embed_vector = static_cast<WeightType*>(weight->data) + token_id * d_model;
-    for (int i=0; i<d_model; ++i) {
-        x_out[i] = convert_to_float<WeightType, Tag>(embed_vector[i]);
-    }
+    embed(x_out, weight, token_id*d_model, d_model);
 }
 
-void Qwen3Embed::metal_forward(float* x_out, int token_id) {
+void Qwen3Embed::metal_forward(MTL::Buffer* x_out, int token_id) {
 
-    std::string embed_name = "embed" + dtype_kernel_suffix(get_qdtype());
+    std::string embed_name = "embed" + dtype_kernel_suffix(weight->dtype);
     int token_offset = token_id*d_model;
 
     MetalManager::dispatch1d(
         embed_name.c_str(),
         d_model / 32, 32,
         &token_offset, sizeof(int),
-        (void*[]){x_out, weight->data}, 2
+        (MTL::Buffer*[]){x_out, weight->metal_buf()}, 2
     );
 }
 
@@ -76,41 +48,36 @@ void Qwen3Embed::metal_forward(float* x_out, int token_id) {
 Qwen3LMHead::Qwen3LMHead(
     int d_in, int d_out,
     TPtr weight, TPtr bias, 
-    DataType qdtype, DeviceType device
-) : Linear(d_in, d_out, weight, bias, qdtype, device) {
-    set_read_bytes(weight->size_bytes + (bias ? bias->size_bytes : 0));
-}
+    DeviceType device
+) : Linear(d_in, d_out, weight, bias, device) {}
 
 void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
     if (run_state->compute_logits) {
         if (get_device() == DeviceType::CPU) {
-            switch (get_qdtype()) {
-                case DataType::F32: Qwen3LMHead::cpu_forward<float, float_tag>(run_state->logits.get(), run_state->x.get()); break;
-                case DataType::F16: Qwen3LMHead::cpu_forward<fp16_t, fp16_tag>(run_state->logits.get(), run_state->x.get()); break;
-                case DataType::BF16: Qwen3LMHead::cpu_forward<bf16_t, bf16_tag>(run_state->logits.get(), run_state->x.get()); break;
-                default: assert(false && "Qwen3LMHead has invalid or unsupported qdtype"); break;
-            }
+            Qwen3LMHead::cpu_forward(std::get<float*>(run_state->logits), std::get<float*>(run_state->x));
         } else if (get_device() == DeviceType::METAL) {
-            Qwen3LMHead::metal_forward(run_state->logits.get(), run_state->x.get());
+            Qwen3LMHead::metal_forward(std::get<MTL::Buffer*>(run_state->logits), std::get<MTL::Buffer*>(run_state->x));
         } else {
             assert(false && "Qwen3LMHead support for this device not implemented yet");
         }
     }
 }
 
-template <typename WeightType, typename Tag>
-void Qwen3LMHead::cpu_forward(float* x_out, const float* x_in) {
-    cpu::matmul<WeightType, Tag>(x_out, x_in, static_cast<WeightType*>(weight->data), d_out, d_in);
+void Qwen3LMHead::cpu_forward(float* x_out, float* x_in) {
+    matmul(x_out, x_in, weight, 0, d_out, d_in);
+    
     if (bias) {
+        auto& bias_view = bias->cpu_typed_view<DataType::F32>();
+        const float* b = bias_view.ptr();
         for (int i=0; i<d_out; ++i) {
-            x_out[i] += convert_to_float<WeightType, Tag>(static_cast<WeightType*>(bias->data)[i]);
+            x_out[i] += b[i];
         }
     }
 }
 
-void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
+void Qwen3LMHead::metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in) {
 
-    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(get_qdtype());
+    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(weight->dtype);
 
     struct { size_t weight_offset; int d_in; } args = { 0, d_in };
 
@@ -118,7 +85,7 @@ void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
         lin_proj_name.c_str(),
         d_out, 32,
         &args, sizeof(args),
-        (void*[]){weight->data, const_cast<float*>(x_in), x_out}, 3
+        (MTL::Buffer*[]){weight->metal_buf(), x_in, x_out}, 3
     );
     
     if (bias) {
@@ -127,7 +94,7 @@ void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
             "resadd",
             n_thrgps, 1024,
             nullptr, 0,
-            (void*[]){x_out, bias->data}, 2
+            (MTL::Buffer*[]){x_out, bias->metal_buf()}, 2
         );
     }
 }
@@ -137,31 +104,25 @@ void Qwen3LMHead::metal_forward(float* x_out, const float* x_in) {
 Qwen3FinalRMSNorm::Qwen3FinalRMSNorm(
     int dim, float eps, 
     TPtr weight,
-    DataType qdtype, DeviceType device
-) : RMSNorm(dim, eps, weight, qdtype, device) {
-
-    set_read_bytes(weight->size_bytes);
-}
+    DeviceType device
+) : RMSNorm(dim, eps, weight, device) {}
 
 void Qwen3FinalRMSNorm::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == DeviceType::CPU) {
-        switch (get_qdtype()) {
-            case DataType::F32: Qwen3FinalRMSNorm::cpu_forward<float, float_tag>(run_state->x.get(), run_state->x.get()); break;
-            default: assert(false && "Qwen3FinalRMSNorm has invalid or unsupported qdtype"); break;
-        }
+        Qwen3FinalRMSNorm::cpu_forward(std::get<float*>(run_state->x), std::get<float*>(run_state->x));
     } else if (get_device() == DeviceType::METAL) {
-        Qwen3FinalRMSNorm::metal_forward(run_state->x.get(), run_state->x.get());
+        Qwen3FinalRMSNorm::metal_forward(std::get<MTL::Buffer*>(run_state->x), std::get<MTL::Buffer*>(run_state->x));
     } else {
         assert(false && "Qwen3FinalRMSNorm support for this device not implemented yet");
     }
 }
 
-template <typename WeightType, typename Tag>
 void Qwen3FinalRMSNorm::cpu_forward(float* x_out, float* x_in) {
-    cpu::rmsnorm(x_out, x_in, static_cast<WeightType*>(weight->data), dim, eps);
+    auto& weight_view = weight->cpu_typed_view<DataType::F32>();
+    rmsnorm(x_out, x_in, weight_view, dim, eps);
 }
 
-void Qwen3FinalRMSNorm::metal_forward(float* x_out, float* x_in) {
+void Qwen3FinalRMSNorm::metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in) {
     
     struct { int dim; float eps; int stride; } params = {dim, eps, 0};
     
@@ -169,7 +130,7 @@ void Qwen3FinalRMSNorm::metal_forward(float* x_out, float* x_in) {
         "rmsnorm",
         1, 1024,
         &params, sizeof(params),
-        (void*[]){weight->data, x_in, x_out}, 3
+        (MTL::Buffer*[]){weight->metal_buf(), x_in, x_out}, 3
     );
 }
 
@@ -182,57 +143,30 @@ Qwen3GQA::Qwen3GQA(
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
     TPtr w_attnnorm, 
-    DataType qdtype, DeviceType device
+    DeviceType device
 ) : GQA(
         block_idx, d_model, max_seq_len, 
         n_heads, n_kv_heads, d_head, d_rotary,
         eps, freq_base, 
         wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm, 
-        qdtype, device
-    ) {
-        set_read_bytes(
-            wq->size_bytes + wk->size_bytes + wv->size_bytes + wo->size_bytes 
-          + wq_norm->size_bytes + wk_norm->size_bytes + w_attnnorm->size_bytes
-        );
-    }
+        device
+    ) {}
 
 void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == DeviceType::CPU) {
-        switch (get_qdtype()) {
-            case DataType::F32: Qwen3GQA::cpu_forward<float, float_tag>(
-                run_state->x.get(), run_state->xb.get(), 
-                run_state->att_out.get(), run_state->att_scores.get(),
-                run_state->q.get(), run_state->k.get(), run_state->v.get(),
-                run_state->k_cache.get(), run_state->v_cache.get(),
-                run_state->cur_pos
-            ); break;
-
-            case DataType::F16: Qwen3GQA::cpu_forward<fp16_t, fp16_tag>(
-                run_state->x.get(), run_state->xb.get(), 
-                run_state->att_out.get(), run_state->att_scores.get(),
-                run_state->q.get(), run_state->k.get(), run_state->v.get(),
-                run_state->k_cache.get(), run_state->v_cache.get(),
-                run_state->cur_pos
-            ); break;
-
-            case DataType::BF16: Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(
-                run_state->x.get(), run_state->xb.get(), 
-                run_state->att_out.get(), run_state->att_scores.get(),
-                run_state->q.get(), run_state->k.get(), run_state->v.get(),
-                run_state->k_cache.get(), run_state->v_cache.get(),
-                run_state->cur_pos
-            ); break;
-
-            default: assert(false && "Qwen3GQA has invalid or unsupported qdtype"); break;
-            
-        }
-        
+        Qwen3GQA::cpu_forward(
+            std::get<float*>(run_state->x), std::get<float*>(run_state->xb), 
+            std::get<float*>(run_state->att_out), std::get<float*>(run_state->att_scores),
+            std::get<float*>(run_state->q), std::get<float*>(run_state->k), std::get<float*>(run_state->v),
+            std::get<float*>(run_state->k_cache), std::get<float*>(run_state->v_cache),
+            run_state->cur_pos
+        );
     } else if (get_device() == DeviceType::METAL) {
         Qwen3GQA::metal_forward(
-            run_state->x.get(), run_state->xb.get(), 
-            run_state->att_out.get(), run_state->att_scores.get(),
-            run_state->q.get(), run_state->k.get(), run_state->v.get(),
-            run_state->k_cache.get(), run_state->v_cache.get(),
+            std::get<MTL::Buffer*>(run_state->x), std::get<MTL::Buffer*>(run_state->xb), 
+            std::get<MTL::Buffer*>(run_state->att_out), std::get<MTL::Buffer*>(run_state->att_scores),
+            std::get<MTL::Buffer*>(run_state->q), std::get<MTL::Buffer*>(run_state->k), std::get<MTL::Buffer*>(run_state->v),
+            std::get<MTL::Buffer*>(run_state->k_cache), std::get<MTL::Buffer*>(run_state->v_cache),
             run_state->cur_pos
         );
     } else {
@@ -240,7 +174,6 @@ void Qwen3GQA::forward(std::shared_ptr<RunState> run_state) {
     }
 }
 
-template <typename WeightType, typename Tag>
 void Qwen3GQA::cpu_forward(
     float* x_in, float* x_norm, 
     float* att_out_buf, float* att_scores_buf, 
@@ -248,24 +181,23 @@ void Qwen3GQA::cpu_forward(
     float* k_cache, float* v_cache,
     int cur_pos
 ) {
-    cpu::rmsnorm(x_norm, x_in, static_cast<float*>(w_attnnorm->data), d_model, eps);
-    
-    cpu::matmul<WeightType,Tag>(q_buf, x_norm, static_cast<WeightType*>(wq->data), n_heads * d_head, d_model);
-    cpu::matmul<WeightType,Tag>(k_buf, x_norm, static_cast<WeightType*>(wk->data), n_kv_heads * d_head, d_model);
-    cpu::matmul<WeightType,Tag>(v_buf, x_norm, static_cast<WeightType*>(wv->data), n_kv_heads * d_head, d_model);
+    rmsnorm(x_norm, x_in, w_attnnorm->cpu_typed_view<DataType::F32>(), d_model, eps);
 
+    matmul(q_buf, x_norm, wq, 0, n_heads * d_head, d_model);
+    matmul(k_buf, x_norm, wk, 0, n_kv_heads * d_head, d_model);
+    matmul(v_buf, x_norm, wv, 0, n_kv_heads * d_head, d_model);
 
     // have to apply the rmsnorms per head
     for (int h=0; h<n_heads; ++h) {
-        cpu::rmsnorm(q_buf + h*d_head, q_buf + h*d_head, static_cast<float*>(wq_norm->data), d_head, eps);
+        rmsnorm(q_buf + h*d_head, q_buf + h*d_head, wq_norm->cpu_typed_view<DataType::F32>(), d_head, eps);
     }
     
     for (int h=0; h<n_kv_heads; ++h) {
-        cpu::rmsnorm(k_buf + h*d_head, k_buf + h*d_head, static_cast<float*>(wk_norm->data), d_head, eps);
+        rmsnorm(k_buf + h*d_head, k_buf + h*d_head, wk_norm->cpu_typed_view<DataType::F32>(), d_head, eps);
     }
 
-    cpu::neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos, rope_table);
-    cpu::neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos, rope_table);
+    neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
+    neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
 
     // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_head]
     size_t cache_offset = block_idx * max_seq_len * n_kv_heads * d_head + cur_pos * n_kv_heads * d_head;
@@ -280,7 +212,7 @@ void Qwen3GQA::cpu_forward(
     for (int h=0; h<n_heads; ++h) {
         int kv_head = h/heads_per_kv;
         size_t kv_offset = block_idx*max_seq_len*n_kv_heads*d_head + kv_head*d_head;
-        cpu::attn(
+        attn(
             att_scores_buf + h*max_seq_len,
             att_out_buf + h*d_head,
             q_buf + h*d_head,
@@ -292,7 +224,7 @@ void Qwen3GQA::cpu_forward(
         );
     }
 
-    cpu::matmul<WeightType,Tag>(x_norm, att_out_buf, static_cast<WeightType*>(wo->data), d_model, n_heads*d_head);
+    matmul(x_norm, att_out_buf, wo, 0, d_model, n_heads*d_head);
 
     for (int i=0; i<d_model; ++i) {
         x_in[i] += x_norm[i];
@@ -300,14 +232,15 @@ void Qwen3GQA::cpu_forward(
 }
 
 void Qwen3GQA::metal_forward(
-    float* x_in, float* x_norm, 
-    float* att_out_buf, float* att_scores_buf, 
-    float* q_buf, float* k_buf, float* v_buf,
-    float* k_cache, float* v_cache,
+    MTL::Buffer* x_in, MTL::Buffer* x_norm, 
+    MTL::Buffer* att_out_buf, MTL::Buffer* att_scores_buf, 
+    MTL::Buffer* q_buf, MTL::Buffer* k_buf, MTL::Buffer* v_buf,
+    MTL::Buffer* k_cache, MTL::Buffer* v_cache,
     int cur_pos
 ) {
     
-    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(get_qdtype());
+    // assert matching dtypes of qkv, output tensors in init.
+    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(wq->dtype);
 
     int q_dim = n_heads * d_head;
     int kv_dim = n_kv_heads * d_head;
@@ -320,7 +253,7 @@ void Qwen3GQA::metal_forward(
         "rmsnorm",
         1, 1024,
         &norm_params, sizeof(norm_params),
-        (void*[]){w_attnnorm->data, x_in, x_norm}, 3
+        (MTL::Buffer*[]){w_attnnorm->metal_buf(), x_in, x_norm}, 3
     );
 
     // 2-4. QKV projs
@@ -334,21 +267,21 @@ void Qwen3GQA::metal_forward(
         lin_proj_name.c_str(),
         q_dim, 32,
         &q_proj_args, sizeof(q_proj_args),
-        (void*[]){wq->data, x_norm, q_buf}, 3
+        (MTL::Buffer*[]){wq->metal_buf(), x_norm, q_buf}, 3
     );
 
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         kv_dim, 32,
         &k_proj_args, sizeof(k_proj_args),
-        (void*[]){wk->data, x_norm, k_buf}, 3
+        (MTL::Buffer*[]){wk->metal_buf(), x_norm, k_buf}, 3
     );
     
     MetalManager::dispatch1d(
         lin_proj_name.c_str(),
         kv_dim, 32,
         &v_proj_args, sizeof(v_proj_args),
-        (void*[]){wv->data, x_norm, v_buf}, 3
+        (MTL::Buffer*[]){wv->metal_buf(), x_norm, v_buf}, 3
     );
 
     // 5-6. rmsnorm across heads for Q,K
@@ -357,14 +290,14 @@ void Qwen3GQA::metal_forward(
         "rmsnorm",
         n_heads, 1024,
         &head_norm, sizeof(head_norm),
-        (void*[]){wq_norm->data, q_buf, q_buf}, 3
+        (MTL::Buffer*[]){wq_norm->metal_buf(), q_buf, q_buf}, 3
     );
     
     MetalManager::dispatch1d(
         "rmsnorm",
         n_kv_heads, 1024,
         &head_norm, sizeof(head_norm),
-        (void*[]){wk_norm->data, k_buf, k_buf}, 3
+        (MTL::Buffer*[]){wk_norm->metal_buf(), k_buf, k_buf}, 3
     );
 
     // 7-8. RoPE
@@ -378,7 +311,7 @@ void Qwen3GQA::metal_forward(
         rope_thrgps, n_heads,  // X=pair thrgps, Y=heads
         32,
         &rope_params, sizeof(rope_params),
-        (void*[]){q_buf}, 1
+        (MTL::Buffer*[]){q_buf}, 1
     );
 
     // 8. RoPE on K
@@ -387,7 +320,7 @@ void Qwen3GQA::metal_forward(
         rope_thrgps, n_kv_heads,  // Y = n_kv_heads instead
         32,
         &rope_params, sizeof(rope_params),
-        (void*[]){k_buf}, 1
+        (MTL::Buffer*[]){k_buf}, 1
     );
 
     // 9. writing to K,V caches
@@ -399,7 +332,7 @@ void Qwen3GQA::metal_forward(
         "write_kv_cache",
         cache_thrgps, 1024,
         &cache_params, sizeof(cache_params),
-        (void*[]){k_buf, v_buf, k_cache, v_cache}, 4
+        (MTL::Buffer*[]){k_buf, v_buf, k_cache, v_cache}, 4
     );
 
     // 10-12. attn scoring, mixing
@@ -414,7 +347,7 @@ void Qwen3GQA::metal_forward(
         kv_len, n_heads,  // X=posns, Y=heads
         32,
         &score_params, sizeof(score_params),
-        (void*[]){q_buf, k_cache, att_scores_buf}, 3
+        (MTL::Buffer*[]){q_buf, k_cache, att_scores_buf}, 3
     );
 
     // softmax
@@ -423,7 +356,7 @@ void Qwen3GQA::metal_forward(
         "softmax",
         n_heads, 1024,
         &softmax_params, sizeof(softmax_params),
-        (void*[]){att_scores_buf, att_scores_buf}, 2
+        (MTL::Buffer*[]){att_scores_buf, att_scores_buf}, 2
     );
 
     // attn mixing
@@ -436,7 +369,7 @@ void Qwen3GQA::metal_forward(
         d_head, n_heads, // X=head dim, Y=heads
         32,
         &out_params, sizeof(out_params),
-        (void*[]){att_scores_buf, v_cache, att_out_buf}, 3
+        (MTL::Buffer*[]){att_scores_buf, v_cache, att_out_buf}, 3
     );
 
     struct { size_t offset; int d_in; } output_args = { 0, q_dim };
@@ -446,7 +379,7 @@ void Qwen3GQA::metal_forward(
         lin_proj_name.c_str(),
         d_model, 32,
         &output_args, sizeof(output_args),
-        (void*[]){wo->data, att_out_buf, x_norm}, 3
+        (MTL::Buffer*[]){wo->metal_buf(), att_out_buf, x_norm}, 3
     );
 
     // 14. residual
@@ -455,7 +388,7 @@ void Qwen3GQA::metal_forward(
         "resadd",
         res_thrgps, 1024,
         nullptr, 0,
-        (void*[]){x_in, x_norm}, 2
+        (MTL::Buffer*[]){x_in, x_norm}, 2
     );
 }
 
@@ -465,77 +398,49 @@ Qwen3MoE::Qwen3MoE(
     int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
     TPtr w_moenorm, TPtr w_router,
     TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-    DataType qdtype, DeviceType device
+    DeviceType device
 ) : MoE(
         d_model, d_ff, n_experts, n_active_experts, eps, 
         w_moenorm, w_router,
         ws_gate, ws_down, ws_up,
-        qdtype, device
-    ) {
-        set_read_bytes(
-          w_moenorm->size_bytes + (w_router ? w_router->size_bytes : 0)
-        + (ws_gate->size_bytes / n_experts) * n_active_experts
-        + (ws_down->size_bytes / n_experts) * n_active_experts
-        + (ws_up->size_bytes / n_experts) * n_active_experts
-        );
-    }
+        device
+    ) {}
 
 void Qwen3MoE::forward(std::shared_ptr<RunState> run_state) {
     if (get_device() == DeviceType::CPU) {
-        switch(get_qdtype()) {
-            case DataType::F32: Qwen3MoE::cpu_forward<float, float_tag>(
-                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-                run_state->hb.get(), run_state->hb2.get(),
-                run_state->active_experts.get(), run_state->active_experts_scores.get(),
-                run_state->active_experts_weights.get(), run_state->moe_scores.get()
-            ); break;
-
-            case DataType::F16: Qwen3MoE::cpu_forward<fp16_t, fp16_tag>(
-                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-                run_state->hb.get(), run_state->hb2.get(),
-                run_state->active_experts.get(), run_state->active_experts_scores.get(),
-                run_state->active_experts_weights.get(), run_state->moe_scores.get()
-            ); break;
-
-            case DataType::BF16: Qwen3MoE::cpu_forward<bf16_t, bf16_tag>(
-                run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-                run_state->hb.get(), run_state->hb2.get(),
-                run_state->active_experts.get(), run_state->active_experts_scores.get(),
-                run_state->active_experts_weights.get(), run_state->moe_scores.get()
-            ); break;
-
-            default: assert(false && "Qwen3MoE has invalid or unsupported qdtype"); break;
-
-        }
+        Qwen3MoE::cpu_forward(
+            std::get<float*>(run_state->x), std::get<float*>(run_state->xb), std::get<float*>(run_state->xb2),
+            std::get<float*>(run_state->hb), std::get<float*>(run_state->hb2),
+            std::get<int*>(run_state->active_experts), std::get<float*>(run_state->active_experts_weights), 
+            std::get<float*>(run_state->moe_scores)
+        );
     } else if (get_device() == DeviceType::METAL) {
         Qwen3MoE::metal_forward(
-            run_state->x.get(), run_state->xb.get(), run_state->xb2.get(),
-            run_state->hb.get(), run_state->hb2.get(),
-            run_state->active_experts.get(), run_state->active_experts_scores.get(),
-            run_state->active_experts_weights.get(), run_state->moe_scores.get()
+            std::get<MTL::Buffer*>(run_state->x), std::get<MTL::Buffer*>(run_state->xb), std::get<MTL::Buffer*>(run_state->xb2),
+            std::get<MTL::Buffer*>(run_state->hb), std::get<MTL::Buffer*>(run_state->hb2),
+            std::get<MTL::Buffer*>(run_state->active_experts), std::get<MTL::Buffer*>(run_state->active_experts_weights), 
+            std::get<MTL::Buffer*>(run_state->moe_scores)
         );
     } else {
         assert(false && "Qwen3MoE support for this device not implemented yet");
     }
 }
 
-template <typename WeightType, typename Tag>
 void Qwen3MoE::cpu_forward(
     float* x_in, float* x_norm,
     float* exp_buf, float* gate_buf, float* up_buf,
-    int* active_experts, float* active_experts_scores, 
-    float* active_experts_weights, float* moe_scores
+    int* active_experts, float* active_experts_weights,
+    float* moe_scores
 ) {
-    cpu::rmsnorm(x_norm, x_in, static_cast<float*>(w_moenorm->data), d_model, eps);
+    rmsnorm(x_norm, x_in, w_moenorm->cpu_typed_view<DataType::F32>(), d_model, eps);
 
     if (n_experts == 0) {
         active_experts[0] = 0;
         active_experts_weights[0] = 1.0f;
     } else {
-        cpu::route(
-            x_norm, active_experts,
-            active_experts_scores, active_experts_weights,
-            moe_scores, static_cast<float*>(w_router->data),
+        route(
+            x_norm, active_experts, active_experts_weights,
+            moe_scores, w_router->cpu_typed_view<DataType::F32>(),
             d_model, n_experts, n_active_experts
         );
     }
@@ -544,12 +449,15 @@ void Qwen3MoE::cpu_forward(
     for (int i=0; i < n; ++i) {
         int expert_idx = active_experts[i];
 
-        const WeightType* w_gate = static_cast<WeightType*>(ws_gate->data) + expert_idx*d_ff*d_model;
-        const WeightType* w_up = static_cast<WeightType*>(ws_up->data) + expert_idx*d_ff*d_model;
-        const WeightType* w_down = static_cast<WeightType*>(ws_down->data) + expert_idx*d_model*d_ff;
-            
-        cpu::swiglu<WeightType,Tag>(x_norm, exp_buf, gate_buf, up_buf, w_gate, w_up, w_down, d_ff, d_model);
+        // SwiGLU
+        matmul(gate_buf, x_norm, ws_gate, expert_idx*d_ff*d_model, d_ff, d_model);
+        matmul(up_buf, x_norm, ws_up, expert_idx*d_ff*d_model, d_ff, d_model);
+        for (int i=0; i<d_ff; ++i) {
+            gate_buf[i] = silu(gate_buf[i]) * up_buf[i];
+        }
+        matmul(exp_buf, gate_buf, ws_down, expert_idx*d_model*d_ff, d_model, d_ff);
 
+        // resadd
         for (int j=0; j<d_model; ++j) {
             x_in[j] += exp_buf[j]*active_experts_weights[i];
         }
@@ -557,14 +465,14 @@ void Qwen3MoE::cpu_forward(
 }
 
 void Qwen3MoE::metal_forward(
-    float* x_in, float* x_norm,
-    float* exp_buf, float* gate_buf, float* up_buf,
-    int* active_experts, float* active_experts_scores, 
-    float* active_experts_weights, float* moe_scores
+    MTL::Buffer* x_in, MTL::Buffer* x_norm,
+    MTL::Buffer* exp_buf, MTL::Buffer* gate_buf, MTL::Buffer* up_buf,
+    MTL::Buffer* active_experts, MTL::Buffer* active_experts_weights, 
+    MTL::Buffer* moe_scores
 ) {
 
-    DataType qdtype = get_qdtype();
-    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(qdtype);
+    // should assert matching dtypes of ws_up, ws_gate, ws_down tensors in init.
+    std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(ws_up->dtype);
 
     // 1. rmsnorm
     struct { int dim; float eps; int stride; } norm_params = {d_model, eps, 0};
@@ -572,7 +480,7 @@ void Qwen3MoE::metal_forward(
         "rmsnorm",
         1, 1024,
         &norm_params, sizeof(norm_params),
-        (void*[]){w_moenorm->data, x_in, x_norm}, 3
+        (MTL::Buffer*[]){w_moenorm->metal_buf(), x_in, x_norm}, 3
     );
 
     // if MoE model
@@ -585,7 +493,7 @@ void Qwen3MoE::metal_forward(
             lin_proj_name.c_str(),
             n_experts, 32,
             &router_args, sizeof(router_args),
-            (void*[]){w_router->data, x_norm, moe_scores}, 3
+            (MTL::Buffer*[]){w_router->metal_buf(), x_norm, moe_scores}, 3
         );
 
         // 3. top-k
@@ -594,7 +502,7 @@ void Qwen3MoE::metal_forward(
             "moe_topk",
             1, 32,
             &topk_params, sizeof(topk_params),
-            (void*[]){moe_scores, active_experts, active_experts_weights}, 3
+            (MTL::Buffer*[]){moe_scores, active_experts, active_experts_weights}, 3
         );
 
         // 4. softmax
@@ -603,12 +511,12 @@ void Qwen3MoE::metal_forward(
             "softmax",
             1, 1024,
             &softmax_params, sizeof(softmax_params),
-            (void*[]){active_experts_weights, active_experts_weights}, 2
+            (MTL::Buffer*[]){active_experts_weights, active_experts_weights}, 2
         );
     }
 
-    int* active_experts_cpu = (int*)MetalManager::buf_contents(active_experts);
-    float* active_experts_weights_cpu = (float*)MetalManager::buf_contents(active_experts_weights);
+    int* active_experts_cpu = (int*)MetalManager::cpu_ptr(active_experts);
+    float* active_experts_weights_cpu = (float*)MetalManager::cpu_ptr(active_experts_weights);
 
     // 5. process experts
     int n = (n_experts > 0 ? n_active_experts : 1);
@@ -625,7 +533,7 @@ void Qwen3MoE::metal_forward(
             lin_proj_name.c_str(),
             d_ff, 32,
             &gate_args, sizeof(gate_args),
-            (void*[]){ws_gate->data, x_norm, gate_buf}, 3
+            (MTL::Buffer*[]){ws_gate->metal_buf(), x_norm, gate_buf}, 3
         );
 
         // up proj
@@ -633,7 +541,7 @@ void Qwen3MoE::metal_forward(
             lin_proj_name.c_str(),
             d_ff, 32,
             &up_args, sizeof(up_args),
-            (void*[]){ws_up->data, x_norm, up_buf}, 3
+            (MTL::Buffer*[]){ws_up->metal_buf(), x_norm, up_buf}, 3
         );
 
         // silu+mul
@@ -642,7 +550,7 @@ void Qwen3MoE::metal_forward(
             "silu_mul",
             silu_thrgps, 1024,
             nullptr, 0,
-            (void*[]){gate_buf, up_buf}, 2
+            (MTL::Buffer*[]){gate_buf, up_buf}, 2
         );
 
         // down proj
@@ -650,7 +558,7 @@ void Qwen3MoE::metal_forward(
             lin_proj_name.c_str(),
             d_model, 32,
             &down_args, sizeof(down_args),
-            (void*[]){ws_down->data, gate_buf, exp_buf}, 3
+            (MTL::Buffer*[]){ws_down->metal_buf(), gate_buf, exp_buf}, 3
         );
 
         // weighted resadd
@@ -660,27 +568,7 @@ void Qwen3MoE::metal_forward(
             "weight_resadd",
             res_thrgps, 1024,
             &weight, sizeof(float),
-            (void*[]){x_in, exp_buf}, 2
+            (MTL::Buffer*[]){x_in, exp_buf}, 2
         );
     }
 }
-
-// explicit instantiations
-// CPU
-template void Qwen3Embed::cpu_forward<float, float_tag>(float*, int);
-template void Qwen3Embed::cpu_forward<fp16_t, fp16_tag>(float*, int);
-template void Qwen3Embed::cpu_forward<bf16_t, bf16_tag>(float*, int);
-
-template void Qwen3LMHead::cpu_forward<float, float_tag>(float*, const float*);
-template void Qwen3LMHead::cpu_forward<fp16_t, fp16_tag>(float*, const float*);
-template void Qwen3LMHead::cpu_forward<bf16_t, bf16_tag>(float*, const float*);
-
-template void Qwen3FinalRMSNorm::cpu_forward<float, float_tag>(float* x_out, float* x_in);
-
-template void Qwen3GQA::cpu_forward<float, float_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
-template void Qwen3GQA::cpu_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
-template void Qwen3GQA::cpu_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, float*, float*, float*, float*, int);
-
-template void Qwen3MoE::cpu_forward<float, float_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
-template void Qwen3MoE::cpu_forward<fp16_t, fp16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);
-template void Qwen3MoE::cpu_forward<bf16_t, bf16_tag>(float*, float*, float*, float*, float*, int*, float*, float*, float*);

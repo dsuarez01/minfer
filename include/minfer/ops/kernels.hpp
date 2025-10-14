@@ -3,89 +3,30 @@
 #include <cstdint>
 #include <vector>
 
-struct float_tag {};
-struct fp16_tag {};
-struct bf16_tag {};
+// forward decls.
+struct fp32_t;
+struct fp16_t;
+struct bf16_t;
+struct Tensor;
+using TPtr = std::shared_ptr<Tensor>;
 
-using fp16_t = uint16_t;
-using bf16_t = uint16_t;
+float silu(float);
+void softmax(float*, const float*, int);
+void il_rope(float*, const float*, int, int, int, float, int);
+void neox_rope(float*, const float*, int, int, int, float, int);
+void attn(float*, float*, const float*, const float*, const float*, int, int, int);
 
-#if defined(__ARM_NEON)
-    #include <arm_neon.h>
-#endif
+void rmsnorm(float*, const float*, const fp32_t&, int, float);
+void route(const float*, int*, float*, float*, const fp32_t&, int, int, int);
 
-#if defined(__ARM_FEATURE_BF16)
-    #include <arm_bf16.h>
-#endif
+void embed(float*, const TPtr, size_t, int);
 
-#if defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC)
-inline float fp16_to_float(fp16_t x) {
-    __fp16 half_val = *(__fp16*)&x;
-    return (float)half_val;
-}
-inline fp16_t float_to_fp16(float x) {
-    __fp16 half_val = (__fp16)x;
-    return *(fp16_t*)&half_val;
-}
-#endif
+void embed_fp32(float*, const fp32_t&, size_t, int);
+void embed_fp16(float*, const fp16_t&, size_t, int);
+void embed_bf16(float*, const bf16_t&, size_t, int);
 
-#if defined(__ARM_FEATURE_BF16_SCALAR_ARITHMETIC)
-inline float bf16_to_float(bf16_t x) {
-    bfloat16_t bf16_val = *(bfloat16_t*)&x;
-    return vcvtah_f32_bf16(bf16_val);
-}
-inline bf16_t float_to_bf16(float x) {
-    bfloat16_t bf16_val = vcvth_bf16_f32(x);
-    return *(bf16_t*)&bf16_val;
-}
-#endif
+void matmul(float*, const float*, const TPtr, size_t, int, int);
 
-#if !defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC) && !defined(__ARM_FEATURE_BF16_SCALAR_ARITHMETIC)
-inline float half_to_float(uint16_t x) {
-    assert(false && "This platform doesn't support FP16 or BF16. Check compiler flags");
-    return 0.0f;
-}
-inline uint16_t float_to_half(float x) {
-    assert(false && "This platform doesn't support FP16 or BF16. Check compiler flags");
-    return 0;
-}
-#endif
-
-namespace cpu {
-
-    float silu(float x);
-    void softmax(float* x_out, const float* x_in, int size);
-    void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos);
-    void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
-    void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos);
-    void neox_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-            int d_rotary, float freq_base, int pos, std::vector<float>& rope_table);
-    void attn(float* att_scores, float* att_out, const float* q_head, const float* kh, const float* vh,
-            int seq_len, int d_head, int kv_dim);
-    void route(const float* x_norm, int* active_experts, float* active_experts_scores, 
-            float* active_experts_weights, float* moe_scores, const float* w_router,
-            int d_model, int n_experts, int n_active_experts);
-
-    // Explicit specialization declarations
-    template<typename WeightType, typename Tag>
-    void matmul(float* x_out, const float* x_in, const WeightType* weight, int d_out, int d_in);
-    
-    template<>
-    void matmul<float, float_tag>(float* x_out, const float* x_in, const float* weight, int d_out, int d_in);
-    
-    template<>
-    void matmul<fp16_t, fp16_tag>(float* x_out, const float* x_in, const fp16_t* weight, int d_out, int d_in);
-    
-    template<>
-    void matmul<bf16_t, bf16_tag>(float* x_out, const float* x_in, const bf16_t* weight, int d_out, int d_in);
-
-    template <typename WeightType, typename Tag>
-    void swiglu(const float* x_in, float* exp_buf, float* gate_buf, float* up_buf,
-                const WeightType* w_gate, const WeightType* w_up, const WeightType* w_down, 
-                int d_ff, int d_model);
-
-    void rmsnorm(float* x_out, const float* x_in, const float* weight, int dim, float eps);
-};
+void matmul_fp32(float*, const float*, const fp32_t&, size_t, int, int);
+void matmul_fp16(float*, const float*, const fp16_t&, size_t, int, int);
+void matmul_bf16(float*, const float*, const bf16_t&, size_t, int, int);

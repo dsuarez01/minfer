@@ -1,24 +1,25 @@
 #pragma once
 
-#include "minfer/config/config.hpp"
+#include "minfer/base/config.hpp"
 #include "minfer/base/module.hpp"
 
+namespace MTL {
+    class Buffer;
+}
 
 class Qwen3Embed : public Embed {
 public:
     Qwen3Embed(
         size_t vocab_size, int d_model, 
         TPtr weight,
-        DataType qdtype, DeviceType device = DeviceType::CPU
+        DeviceType device = DeviceType::CPU
     );
 
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, int token_id);
-
-    void metal_forward(float* x_out, int token_id);
+    void metal_forward(MTL::Buffer* x_out, int token_id);
 };
 
 class Qwen3LMHead : public Linear {
@@ -26,15 +27,13 @@ public:
     Qwen3LMHead(
         int d_in, int d_out,
         TPtr weight, TPtr bias,
-        DataType qdtype, DeviceType device = DeviceType::CPU
+        DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    template <typename WeightType, typename Tag>
-    void cpu_forward(float* x_out, const float* x_in);
-
-    void metal_forward(float* x_out, const float* x_in);
+    void cpu_forward(float* x_out, float* x_in);
+    void metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in);
 };
 
 class Qwen3FinalRMSNorm : public RMSNorm {
@@ -42,15 +41,13 @@ public:
     Qwen3FinalRMSNorm(
         int dim, float eps, 
         TPtr weight,
-        DataType qdtype, DeviceType device = DeviceType::CPU
+        DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    template <typename WeightType, typename Tag>
     void cpu_forward(float* x_out, float* x_in);
-
-    void metal_forward(float* x_out, float* x_in);
+    void metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in);
 };
 
 class Qwen3GQA : public GQA {
@@ -62,12 +59,11 @@ public:
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
         TPtr w_attnnorm, 
-        DataType qdtype, DeviceType device = DeviceType::CPU
+        DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    template <typename WeightType, typename Tag>
     void cpu_forward(
         float* x_in, float* x_norm, 
         float* att_out_buf, float* att_scores_buf, 
@@ -75,12 +71,11 @@ private:
         float* k_cache, float* v_cache,
         int cur_pos
     );
-
     void metal_forward(
-        float* x_in, float* x_norm, 
-        float* att_out_buf, float* att_scores_buf, 
-        float* q_buf, float* k_buf, float* v_buf, 
-        float* k_cache, float* v_cache,
+        MTL::Buffer* x_in, MTL::Buffer* x_norm, 
+        MTL::Buffer* att_out_buf, MTL::Buffer* att_scores_buf, 
+        MTL::Buffer* q_buf, MTL::Buffer* k_buf, MTL::Buffer* v_buf, 
+        MTL::Buffer* k_cache, MTL::Buffer* v_cache,
         int cur_pos
     );
 };
@@ -91,23 +86,22 @@ public:
         int d_model, int d_ff, int n_experts, int n_active_experts, float eps,
         TPtr w_moenorm, TPtr w_router,
         TPtr ws_gate, TPtr ws_down, TPtr ws_up,
-        DataType qdtype, DeviceType device = DeviceType::CPU
+        DeviceType device = DeviceType::CPU
     );
     void forward(std::shared_ptr<RunState> run_state) override;
 
 private:
-    template <typename WeightType, typename Tag>
     void cpu_forward(
         float* x_in, float* x_norm,
         float* exp_buf, float* gate_buf, float* up_buf,
-        int* active_experts, float* active_experts_scores, 
-        float* active_experts_weights, float* moe_scores
+        int* active_experts, float* active_experts_weights, 
+        float* moe_scores
     );
 
     void metal_forward(
-        float* x_in, float* x_norm,
-        float* exp_buf, float* gate_buf, float* up_buf,
-        int* active_experts, float* active_experts_scores, 
-        float* active_experts_weights, float* moe_scores
+        MTL::Buffer* x_in, MTL::Buffer* x_norm,
+        MTL::Buffer* exp_buf, MTL::Buffer* gate_buf, MTL::Buffer* up_buf,
+        MTL::Buffer* active_experts, MTL::Buffer* active_experts_weights, 
+        MTL::Buffer* moe_scores
     );
 };
