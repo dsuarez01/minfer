@@ -8,7 +8,7 @@ import numpy as np
 from gguf import GGUFReader, GGUFWriter, GGUFValueType, GGMLQuantizationType, ReaderField
 
 # see https://github.com/zeux/calm/blob/main/tools/convert.py
-def create_gpt2_byte_decoder():
+def create_gpt2_byte_codec():
     """ Reverses the GPT-2 tokenizer byte mapping """
     # codepoints of printable chars not remapped
     bs = (list(range(ord("!"), ord("~") + 1)) + 
@@ -282,5 +282,5 @@ def main():
             raise
 
 if __name__ == "__main__":
-    BYTE_DECODER, BYTE_ENCODER = create_gpt2_byte_decoder()
+    BYTE_DECODER, BYTE_ENCODER = create_gpt2_byte_codec()
     main()
