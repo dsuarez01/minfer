@@ -101,23 +101,23 @@ uv run --project python python/print_summary.py <path_to_gguf_file>
 
 # Usage examples for CPU inference (for optimal performance, set OMP_NUM_THREADS=<# of p-cores>):
 OMP_NUM_THREADS=6 ./build/apps/benchmark <path_to_gguf_file> -d cpu -s 42
-OMP_NUM_THREADS=6 ./build/apps/generate <path_to_gguf_file> -d cpu -p "Hello" -m 4096 -s 42 -i
+OMP_NUM_THREADS=6 ./build/apps/generate <path_to_gguf_file> -d cpu -p "Hello world" -m 4096 -s 42 -i
 
 # Usage examples for GPU inference
 ./build/apps/benchmark <path_to_gguf_file> -d gpu -s 42
-./build/apps/generate <path_to_gguf_file> -d gpu -p "Hello" -m 4096 -s 42 -i
+./build/apps/generate <path_to_gguf_file> -d gpu -p "Hello world" -m 4096 -s 42 -i
 ```
 
 
 ## Benchmark Performance
 
-The benchmark consists of a 512-token prefill and 128-token generation phase (referenced in the table as `tg-128`, refer to the statistics `llama-bench` reports. More info can be found at the [llama.cpp](https://github.com/ggml-org/llama.cpp) project repository). 
+The benchmark consists of a 512-token prefill and 128-token generation phase (referenced in the table as `tg-128`, refer to the statistics `llama-bench` reports. More info can be found at the [llama.cpp](https://github.com/ggml-org/llama.cpp) project repository). For Minfer, an avg. of 5 runs w/ stderr is reported.
 
 ### Performance - CPU Inference Results
 
 This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations, and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
 
-|     (M2 Pro CPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
+|     (M2 Pro CPU, tg-128)                       |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
 |------------------------------------------------|-----------------------------------|----------------------------------|-----------------------------------|---------------------------------|
 | Qwen3-0.6B-BF16                                |          55.31 ± 1.32             |              N/A*                |          71.11 ± 1.28             |               N/A**             |
 | Qwen3-0.6B-FP16                                |          55.44 ± 0.52             |           87.33 ± 0.53           |          69.55 ± 1.17             |               N/A**             |
@@ -131,7 +131,7 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 
 ### Performance - GPU Inference Results
 
-|     (M2 Pro GPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)     |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
+|                (M2 Pro GPU, tg-128)            |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)     |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
 |------------------------------------------------|-----------------------------------|-----------------------------------|-----------------------------------|---------------------------------|
 | Qwen3-0.6B-BF16                                |         114.38 ± 1.85             |            7.80 ± 0.05*           |          148.08 ± 0.32            |               N/A**             |
 | Qwen3-0.6B-FP16                                |         115.82 ± 0.96             |            106.75 ± 0.31          |          149.18 ± 0.33            |               N/A**             |
