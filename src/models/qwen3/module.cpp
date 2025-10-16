@@ -30,15 +30,15 @@ void Qwen3Embed::cpu_forward(float* x_out, uint32_t token_id) {
     embed(x_out, weight, token_id, d_model);
 }
 
-void Qwen3Embed::metal_forward(MTL::Buffer* x_out, int token_id) {
+void Qwen3Embed::metal_forward(MTL::Buffer* x_out, uint32_t token_id) {
 
     std::string embed_name = "embed" + dtype_kernel_suffix(weight->dtype);
-    int token_offset = token_id*d_model;
+    size_t token_offset = (size_t)token_id*d_model;
 
     MetalManager::dispatch1d(
         embed_name.c_str(),
         d_model / 32, 32,
-        &token_offset, sizeof(int),
+        &token_offset, sizeof(size_t),
         (MTL::Buffer*[]){x_out, weight->metal_buf()}, 2
     );
 }
@@ -60,6 +60,9 @@ void Qwen3LMHead::forward(std::shared_ptr<RunState> run_state) {
         } else {
             assert(false && "Qwen3LMHead support for this device not implemented yet");
         }
+        set_read_bytes(weight->size_bytes + (bias ? bias->size_bytes : 0));
+    } else {
+        set_read_bytes(0);
     }
 }
 
@@ -124,12 +127,12 @@ void Qwen3FinalRMSNorm::cpu_forward(float* x_out, float* x_in) {
 
 void Qwen3FinalRMSNorm::metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in) {
     
-    struct { int dim; float eps; int stride; } params = {dim, eps, 0};
+    struct { float eps; int dim; } norm_params = { eps, dim };
     
     MetalManager::dispatch1d(
         "rmsnorm",
         1, 1024,
-        &params, sizeof(params),
+        &norm_params, sizeof(norm_params),
         (MTL::Buffer*[]){weight->metal_buf(), x_in, x_out}, 3
     );
 }
@@ -138,7 +141,7 @@ void Qwen3FinalRMSNorm::metal_forward(MTL::Buffer* x_out, MTL::Buffer* x_in) {
 
 Qwen3GQA::Qwen3GQA(
     int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
-    size_t max_seq_len,
+    int max_seq_len,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -187,17 +190,22 @@ void Qwen3GQA::cpu_forward(
     matmul(k_buf, x_norm, wk, 0, n_kv_heads * d_head, d_model);
     matmul(v_buf, x_norm, wv, 0, n_kv_heads * d_head, d_model);
 
-    // have to apply the rmsnorms per head
+    // rmsnorms and neox_rope per head
     for (int h=0; h<n_heads; ++h) {
         rmsnorm(q_buf + h*d_head, q_buf + h*d_head, wq_norm->cpu_typed_view<DataType::F32>(), d_head, eps);
     }
     
+    for (int h=0; h<n_heads; ++h) {
+        neox_rope(q_buf, q_buf, h, d_head, d_rotary, freq_base, cur_pos);
+    }
+
     for (int h=0; h<n_kv_heads; ++h) {
         rmsnorm(k_buf + h*d_head, k_buf + h*d_head, wk_norm->cpu_typed_view<DataType::F32>(), d_head, eps);
     }
 
-    neox_rope(q_buf, q_buf, n_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
-    neox_rope(k_buf, k_buf, n_kv_heads*d_head, d_head, d_rotary, freq_base, cur_pos);
+    for (int h=0; h<n_kv_heads; ++h) {
+        neox_rope(k_buf, k_buf, h, d_head, d_rotary, freq_base, cur_pos);
+    }
 
     // kv cache layout: [n_layers, max_seq_len, n_kv_heads, d_head]
     size_t cache_offset = block_idx * max_seq_len * n_kv_heads * d_head + cur_pos * n_kv_heads * d_head;
@@ -206,11 +214,12 @@ void Qwen3GQA::cpu_forward(
         v_cache[cache_offset+i] = v_buf[i];
     }
 
-    int heads_per_kv = n_heads/n_kv_heads;
+    int kv_mul = n_heads/n_kv_heads;
     
+    // attend over all positions for each kv head
     #pragma omp parallel for
     for (int h=0; h<n_heads; ++h) {
-        int kv_head = h/heads_per_kv;
+        int kv_head = h/kv_mul;
         size_t kv_offset = block_idx*max_seq_len*n_kv_heads*d_head + kv_head*d_head;
         attn(
             att_scores_buf + h*max_seq_len,
@@ -242,13 +251,13 @@ void Qwen3GQA::metal_forward(
     // assert matching dtypes of qkv, output tensors in init.
     std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(wq->dtype);
 
-    int q_dim = n_heads * d_head;
-    int kv_dim = n_kv_heads * d_head;
-    int kv_len = cur_pos + 1;
-    int heads_per_kv = n_heads / n_kv_heads;
+    int q_dim = n_heads*d_head;
+    int kv_dim = n_kv_heads*d_head;
+    int kv_len = cur_pos+1;
+    int kv_mul = n_heads/n_kv_heads;
     
     // 1. pre-RMSNorm
-    struct { int dim; float eps; int stride; } norm_params = {d_model, eps, 0};
+    struct { float eps; int dim; } norm_params = { eps, d_model };
     MetalManager::dispatch1d(
         "rmsnorm",
         1, 1024,
@@ -285,25 +294,26 @@ void Qwen3GQA::metal_forward(
     );
 
     // 5-6. rmsnorm across heads for Q,K
-    struct { int dim; float eps; int stride; } head_norm = {d_head, eps, d_head};
+    struct { float eps; int dim; } h_norm_params = { eps, d_head };
+
     MetalManager::dispatch1d(
         "rmsnorm",
         n_heads, 1024,
-        &head_norm, sizeof(head_norm),
+        &h_norm_params, sizeof(h_norm_params),
         (MTL::Buffer*[]){wq_norm->metal_buf(), q_buf, q_buf}, 3
     );
     
     MetalManager::dispatch1d(
         "rmsnorm",
         n_kv_heads, 1024,
-        &head_norm, sizeof(head_norm),
+        &h_norm_params, sizeof(h_norm_params),
         (MTL::Buffer*[]){wk_norm->metal_buf(), k_buf, k_buf}, 3
     );
 
     // 7-8. RoPE
 
     // 7. RoPE on Q
-    struct { int d_rotary; int d_head; float freq_base; int pos; } rope_params = {d_rotary, d_head, freq_base, cur_pos};
+    struct { float freq_base; int d_rotary; int d_head; int pos; } rope_params = { freq_base, d_rotary, d_head, cur_pos };
     size_t rope_thrgps = (d_rotary/2 + 31) / 32;
     
     MetalManager::dispatch2d(
@@ -324,22 +334,21 @@ void Qwen3GQA::metal_forward(
     );
 
     // 9. writing to K,V caches
-    struct { int layer_idx; int cur_pos; int seq_len; int n_kv_heads; int d_head; } cache_params = {
-        block_idx, cur_pos, (int)max_seq_len, n_kv_heads, d_head
-    };
+    size_t cache_offset = (size_t) block_idx * max_seq_len * kv_dim + (size_t) cur_pos * kv_dim;
+
     size_t cache_thrgps = (kv_dim+1023) / 1024;
     MetalManager::dispatch1d(
         "write_kv_cache",
         cache_thrgps, 1024,
-        &cache_params, sizeof(cache_params),
+        &cache_offset, sizeof(size_t),
         (MTL::Buffer*[]){k_buf, v_buf, k_cache, v_cache}, 4
     );
 
     // 10-12. attn scoring, mixing
     
     // attn scoring    
-    struct { size_t loff; int d_head; int kv_dim; int kv_mul; int kv_len; int seq_len; } score_params = {
-        block_idx * max_seq_len * kv_dim, d_head, kv_dim, heads_per_kv, kv_len, (int)max_seq_len
+    struct { size_t loff; int max_seq_len; int d_head; int kv_dim; int kv_len; int kv_mul; } score_params = {
+        (size_t) block_idx * max_seq_len * kv_dim, max_seq_len, d_head, kv_dim, kv_len, kv_mul,
     };
 
     MetalManager::dispatch2d(
@@ -351,7 +360,8 @@ void Qwen3GQA::metal_forward(
     );
 
     // softmax
-    struct { int dim; int stride; } softmax_params = {kv_len, (int)max_seq_len};
+    struct { int stride; int dim; } softmax_params = { max_seq_len, kv_len };
+
     MetalManager::dispatch1d(
         "softmax",
         n_heads, 1024,
@@ -360,8 +370,8 @@ void Qwen3GQA::metal_forward(
     );
 
     // attn mixing
-    struct { size_t loff; int seq_len; int kv_len; int d_head; int kv_dim; int kv_mul; } out_params = {
-        block_idx * max_seq_len * kv_dim, (int)max_seq_len, kv_len, d_head, kv_dim, heads_per_kv
+    struct { size_t loff; int max_seq_len; int d_head; int kv_dim; int kv_len; int kv_mul; } out_params = {
+        (size_t) block_idx * max_seq_len * kv_dim, max_seq_len, d_head, kv_dim, kv_len, kv_mul
     };
 
     MetalManager::dispatch2d(
@@ -476,7 +486,8 @@ void Qwen3MoE::metal_forward(
     std::string lin_proj_name = "linear_proj" + dtype_kernel_suffix(ws_up->dtype);
 
     // 1. rmsnorm
-    struct { int dim; float eps; int stride; } norm_params = {d_model, eps, 0};
+    struct { float eps; int dim; } norm_params = { eps, d_model };
+
     MetalManager::dispatch1d(
         "rmsnorm",
         1, 1024,
@@ -507,7 +518,7 @@ void Qwen3MoE::metal_forward(
         );
 
         // 4. softmax
-        struct { int dim; int stride; } softmax_params = {n_active_experts, 0};
+        struct { int stride; int dim; } softmax_params = { 0, n_active_experts };
         MetalManager::dispatch1d(
             "softmax",
             1, 1024,

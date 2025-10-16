@@ -70,7 +70,7 @@ RMSNorm::RMSNorm(
 
 GQA::GQA(
     int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
-    size_t max_seq_len,
+    int max_seq_len,
     float eps, float freq_base,
     TPtr wq, TPtr wk, TPtr wv,
     TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -147,8 +147,8 @@ MoE::MoE(
 
     set_read_bytes(
         w_moenorm->size_bytes + (w_router ? w_router->size_bytes : 0)
-      + (ws_gate->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
-      + (ws_down->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
-      + (ws_up->size_bytes / (n_experts == 0 ? 1 : n_experts)) * n_active_experts
+      + (ws_gate->size_bytes / (n_experts == 0 ? 1 : n_experts)) * (n_active_experts == 0 ? 1 : n_active_experts)
+      + (ws_down->size_bytes / (n_experts == 0 ? 1 : n_experts)) * (n_active_experts == 0 ? 1 : n_active_experts)
+      + (ws_up->size_bytes / (n_experts == 0 ? 1 : n_experts)) * (n_active_experts == 0 ? 1 : n_active_experts)
     );
 }

@@ -113,7 +113,7 @@ void BaseModel::generate(std::string& input_text) {
 
     stats->start_timer(); // PREFILL START
     
-    size_t total_passes = 0;
+    size_t model_bytes_read = 0;
     size_t kv_cache_bytes_read = 0;
     
     // PREFILL
@@ -124,7 +124,7 @@ void BaseModel::generate(std::string& input_text) {
         run_state->compute_logits = (i == tokens.size()-1);
         forward(run_state);
         
-        total_passes++;
+        model_bytes_read += this->get_read_bytes();
         kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos+1); // read from pos [0, 1, ..., i]
     }
 
@@ -168,7 +168,7 @@ void BaseModel::generate(std::string& input_text) {
         run_state->compute_logits = true;
         forward(run_state);
 
-        total_passes++;
+        model_bytes_read += this->get_read_bytes();
         kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos + 1); // read from pos [0, 1, ..., i]
     }
 
@@ -179,7 +179,7 @@ void BaseModel::generate(std::string& input_text) {
     stats->throughput = generated/throughput_time;
 
     // total mem reads
-    size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
+    size_t total_bytes = model_bytes_read + kv_cache_bytes_read;
     
     stats->bandwidth = total_bytes / 1e9 / (throughput_time + prefill_time); // mem bandwidth in GB/sec
     stats->print_stats();
@@ -194,7 +194,7 @@ void BaseModel::benchmark() {
 
     stats->start_timer(); // PREFILL START
 
-    size_t total_passes = 0;
+    size_t model_bytes_read = 0;
     size_t kv_cache_bytes_read = 0;
 
     for(size_t i = 0; i<512; ++i) {
@@ -202,7 +202,7 @@ void BaseModel::benchmark() {
         run_state->token_id = distrib(gen);
         run_state->compute_logits = (i == 512-1);
         forward(run_state);
-        total_passes++;
+        model_bytes_read += this->get_read_bytes();
         kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos+1);
     }
 
@@ -219,7 +219,7 @@ void BaseModel::benchmark() {
         run_state->compute_logits = true;
         forward(run_state);
 
-        total_passes++;
+        model_bytes_read += this->get_read_bytes();
         kv_cache_bytes_read += run_state->kv_bytes_per_pos * (run_state->cur_pos + 1); // read from pos [0, 1, ..., i]
     }
 
@@ -229,7 +229,7 @@ void BaseModel::benchmark() {
 
     // total mem reads (an overestimate because lm_head weights aren't read when compute_logits is false)
     // TO-DO: fix mem bandwidth calc if needed
-    size_t total_bytes = total_passes * this->get_read_bytes() + kv_cache_bytes_read;
+    size_t total_bytes = model_bytes_read + kv_cache_bytes_read;
     
     stats->bandwidth = total_bytes / 1e9 / (throughput_time+prefill_time); // mem bandwidth in GB/sec
     stats->print_stats();

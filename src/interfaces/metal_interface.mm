@@ -1,6 +1,8 @@
 #include "minfer/base/config.hpp"
 #include "minfer/interfaces/metal_interface.hpp"
+
 #include <iostream>
+#include <string>
 
 #ifdef USE_METAL
     #define NS_PRIVATE_IMPLEMENTATION
@@ -89,21 +91,19 @@
                 dispatch_get_main_queue(), ^{}
             );
 
-            // load, cache precompiled lib
+            // load, cache precompiled lib + pipelines
             NS::Error* err = nullptr;
             g_metal_ctx->library = g_metal_ctx->device->newLibrary(lib_data, &err);
             assert(g_metal_ctx->library && "Failed to load Metal library");
 
             NS::Array* fcn_names = g_metal_ctx->library->functionNames();
-            for (size_t i = 0; i < fcn_names->count(); ++i) {
-                NS::String* name = static_cast<NS::String*>(fcn_names->object(i));
+            for (NS::UInteger i=0; i<fcn_names->count(); ++i) {
+                NS::String* name = fcn_names->object<NS::String>(i);
                 MTL::Function* fcn = g_metal_ctx->library->newFunction(name);
                 assert(fcn);
-                
                 MTL::ComputePipelineState* pipeline = g_metal_ctx->device->newComputePipelineState(fcn, &err);
                 assert(pipeline);
-                
-                g_metal_ctx->pipelines[name->utf8String()] = pipeline;
+                g_metal_ctx->pipelines[fcn->name()->utf8String()] = pipeline; // note: ASAN alignment false pos. here due to tagged ptrs, consider -fno-sanitize=alignment
                 fcn->release();
             }
         }
@@ -155,9 +155,8 @@
                 start_idx = 1;
             }
             
-            for (size_t i = 0; i < buf_cnt; ++i) {
-                auto* buf = static_cast<MTL::Buffer*>(bufs[i]);
-                enc->setBuffer(buf, 0, start_idx + i);
+            for (size_t i=0; i<buf_cnt; ++i) {
+                enc->setBuffer(bufs[i], 0, start_idx+i);
             }
             
             MTL::Size grid_size(n_thrgps, 1, 1);
@@ -184,9 +183,8 @@
                 start_idx = 1;
             }
             
-            for (size_t i = 0; i < buf_cnt; ++i) {
-                auto* buf = static_cast<MTL::Buffer*>(bufs[i]);
-                enc->setBuffer(buf, 0, start_idx + i);
+            for (size_t i=0; i<buf_cnt; ++i) {
+                enc->setBuffer(bufs[i], 0, start_idx+i);
             }
             
             MTL::Size grid_size(n_thrgps_x, n_thrgps_y, 1);

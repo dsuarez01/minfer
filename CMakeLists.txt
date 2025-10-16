@@ -12,15 +12,20 @@ endif()
 project(
     minfer 
     VERSION 1.0
-    LANGUAGES C CXX)
+    LANGUAGES C CXX
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # build types
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto=full -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -Wall -Wextra")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+endif()
 
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_THREADING "Enable OpenMP threading support" ON)

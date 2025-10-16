@@ -48,46 +48,35 @@ void softmax(float* x_out, const float* x_in, int size) {
     }
 }
 
-void il_rope(float* x_out, const float* x_in, int d_flat, int d_head, 
-    int d_rotary, float freq_base, int pos) {
-    for (int i=0; i<d_flat; i+=2) {
-        float x_0 = x_in[i];
-        float x_1 = x_in[i+1];
+void il_rope(float* x_out, const float* x_in, int head_idx, int d_head, int d_rotary, float freq_base, int pos) {
+    const float* head_in = x_in + head_idx*d_head;
+    float* head_out = x_out + head_idx*d_head;
 
-        int ii = i % d_head;
-        float freq = ii >= d_rotary ? 0.0f : 1.0f / std::powf(freq_base, (1.0f * ii) / d_rotary);
+    for (int pair_idx=0; pair_idx<d_rotary/2; ++pair_idx) {
+        float freq = 1.0f / pow(freq_base, 2.0f*pair_idx/d_rotary);
         float angle = pos*freq;
         
-        float cos_angle = std::cosf(angle);
-        float sine_angle = std::sinf(angle);
+        float x_0 = head_in[2*pair_idx];
+        float x_1 = head_in[2*pair_idx+1];
 
-        float new_x_0 = cos_angle*x_0 - sine_angle*x_1;
-        float new_x_1 = sine_angle*x_0 + cos_angle*x_1;
-        
-        x_out[i] = new_x_0;
-        x_out[i+1] = new_x_1;
+        head_out[2*pair_idx] = cos(angle)*x_0 - sin(angle)*x_1;
+        head_out[2*pair_idx+1] = sin(angle)*x_0 + cos(angle)*x_1;
     }
 }
 
-void neox_rope(
-    float* x_out, const float* x_in, int d_flat, int d_head, 
-    int d_rotary, float freq_base, int pos
-) {
-    for (int i=0; i<d_flat; ) {
-        int i_0 = i%d_head;
-        int i_1 = i_0 < d_rotary/2 ? i_0 + d_rotary/2 : i_0;
-        float x_0 = x_in[i_0 + (i/d_head)*d_head];
-        float x_1 = x_in[i_1 + (i/d_head)*d_head]; 
+void neox_rope(float* x_out, const float* x_in, int head_idx, int d_head, int d_rotary, float freq_base, int pos) {
+    const float* head_in = x_in + head_idx*d_head;
+    float* head_out = x_out + head_idx*d_head;
 
-        float freq = i_0 < d_rotary / 2 ? 1.0f / std::powf(freq_base, 2.0f * i_0 / d_rotary) : 0.0f;
-        float angle = pos * freq;
+    for (int pair_idx=0; pair_idx<d_rotary/2; ++pair_idx) {
+        float freq = 1.0f / pow(freq_base, 2.0f*pair_idx/d_rotary);
+        float angle = pos*freq;
+        
+        float x_0 = head_in[pair_idx];
+        float x_1 = head_in[pair_idx+d_rotary/2];
 
-        float cos_angle = std::cosf(angle);
-        float sine_angle = std::sinf(angle);
-
-        x_out[i_0 + (i/d_head)*d_head] = cos_angle * x_0 - sine_angle * x_1;
-        x_out[i_1 + (i/d_head)*d_head] = sine_angle * x_0 + cos_angle * x_1;
-        i += ((i+1)%d_head == d_rotary/2) ? d_rotary/2 + 1 : 1;
+        head_out[pair_idx] = cos(angle)*x_0 - sin(angle)*x_1;
+        head_out[pair_idx+d_rotary/2] = sin(angle)*x_0 + cos(angle)*x_1;
     }
 }
 
@@ -107,23 +96,6 @@ void attn(
     }
     
     softmax(att_scores, att_scores, seq_len);
-    
-    // for (int pos = 0; pos<seq_len; ++pos) {
-    //     float score = att_scores[pos];
-    //     for (int d = 0; d<d_head; ++d) {
-    //         att_out[d] = (pos == 0) ? 
-    //             score*vh[pos * kv_dim + d] :
-    //             att_out[d]+score*vh[pos*kv_dim + d];
-    //     }
-    // }
-
-    // for (int d=0; d<d_head; ++d) {
-    //     float output = 0.0f;
-    //     for (int pos=0; pos < seq_len; ++pos) {
-    //         output += att_scores[pos] * vh[pos*kv_dim+d];
-    //     }
-    //     att_out[d] = output;
-    // }
 
     for (int d=0; d<d_head; ++d) {
         att_out[d] = 0.0f;
@@ -143,7 +115,7 @@ void route(
     float* moe_scores, const fp32_t& w_router,
     int d_model, int n_experts, int n_active_experts
 ) {
-    matmul_fp32(moe_scores, x_norm, w_router, 0, n_experts, d_model); // careful: does the tiling strategy handle this right now?
+    matmul_fp32(moe_scores, x_norm, w_router, 0, n_experts, d_model);
     
     std::bitset<MAX_EXPERTS> visited;
     

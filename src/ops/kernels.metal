@@ -3,51 +3,42 @@
 using namespace metal;
 
 struct LinearProjArgs {
-    size_t weight_offset;
+    size_t offset;
     uint d_in;
 };
 
 struct RMSNormArgs {
-    uint dim;
     float eps;
-    uint stride;
+    uint dim;
 };
 
 struct SoftmaxArgs {
-    uint dim;
     uint stride;
+    uint dim;
 };
 
 struct RopeArgs {
+    float freq_base;
     uint d_rotary;
     uint d_head;
-    float freq_base;
     uint pos;
-};
-
-struct CacheArgs {
-    uint layer_idx;
-    uint cur_pos;
-    uint seq_len;
-    uint n_kv_heads;
-    uint d_head;
 };
 
 struct AttnScoreArgs {
     size_t loff;
+    uint max_seq_len;
     uint d_head;
     uint kv_dim;
-    uint kv_mul;
     uint kv_len;
-    uint seq_len;
+    uint kv_mul;
 };
 
 struct AttnOutArgs {
     size_t loff;
-    uint seq_len;
-    uint kv_len;
+    uint max_seq_len;
     uint d_head;
     uint kv_dim;
+    uint kv_len;
     uint kv_mul;
 };
 
@@ -91,9 +82,9 @@ inline float matmul_row(
     uint d_in,
     uint tid
 ) {
-    uint lane = tid%32;
+    uint simd_lane = tid%32;
     float val = 0.0f;
-    for (uint j=lane*4; j<d_in; j+=32*4) {
+    for (uint j=simd_lane*4; j<d_in; j+=32*4) {
         
         vec<WeightT,4> w = vec<WeightT,4>(
             weight[row_idx*d_in+j],
@@ -123,10 +114,10 @@ inline float attn_dot(
     uint dim_idx,
     uint tid
 ) {
-    uint lane = tid % 32;
+    uint simd_lane = tid % 32;
     float out = 0.0f;
     
-    for (uint pos=lane; pos<kv_len; pos+=32) {
+    for (uint pos=simd_lane; pos<kv_len; pos+=32) {
         out += att_scores[pos]*vh[pos*kv_dim+dim_idx];
     }
     
@@ -164,7 +155,7 @@ template<typename WeightT>
     uint tid [[ thread_position_in_threadgroup ]],
     uint row_idx [[ threadgroup_position_in_grid ]]
 ) {
-    float result = matmul_row<WeightT>(weight + args.weight_offset, x_in, row_idx, args.d_in, tid);
+    float result = matmul_row<WeightT>(weight + args.offset, x_in, row_idx, args.d_in, tid);
 
     if (tid == 0) {
         x_out[row_idx] = result;
@@ -174,7 +165,7 @@ template<typename WeightT>
 // spawn d_model threads for this
 template<typename WeightT>
 [[kernel]] void embed(
-    constant uint& token_offset [[ buffer(0) ]],
+    constant size_t& token_offset [[ buffer(0) ]],
     device float* out [[ buffer(1) ]],
     const device WeightT* weight [[ buffer(2) ]],
     uint tid [[ thread_position_in_grid ]]
@@ -193,8 +184,8 @@ template<typename WeightT>
     uint thrs_per_thrgp [[ threads_per_threadgroup ]],
     uint head_idx [[ threadgroup_position_in_grid ]]
 ) {
-    const device float* head_in = in + head_idx*args.stride;
-    device float* head_out = out + head_idx*args.stride;
+    const device float* head_in = in + head_idx*args.dim;
+    device float* head_out = out + head_idx*args.dim;
     
     threadgroup float shared_sum[32];
     
@@ -268,7 +259,6 @@ template<typename WeightT>
     float freq = 1.0f / pow(args.freq_base, 2.0f*pair_idx/args.d_rotary);
     float angle = args.pos*freq;
 
-    // pair_idx, pair_idx+1 rotated as pair
     uint idx = 2*pair_idx;
     
     float x_0 = head_buf[idx];
@@ -303,21 +293,15 @@ template<typename WeightT>
 
 // n_kv_heads * d_head (kv_dim) threads
 [[kernel]] void write_kv_cache(
-    constant CacheArgs& args [[ buffer(0) ]],
+    constant size_t& cache_offset [[ buffer(0) ]],
     const device float* k_in [[ buffer(1) ]],
     const device float* v_in [[ buffer(2) ]],
     device float* k_cache [[ buffer(3) ]],
     device float* v_cache [[ buffer(4) ]],
     uint tid [[ thread_position_in_grid ]]
 ) {
-    uint kv_dim = args.n_kv_heads*args.d_head;
-
-    ulong loff = ulong(args.layer_idx) * args.seq_len * kv_dim;
-    ulong poff = ulong(args.cur_pos) * kv_dim;
-    ulong cache_idx = loff + poff + tid;
-
-    k_cache[cache_idx] = k_in[tid];
-    v_cache[cache_idx] = v_in[tid];
+    k_cache[cache_offset+tid] = k_in[tid];
+    v_cache[cache_offset+tid] = v_in[tid];
 }
 
 
@@ -334,10 +318,10 @@ template<typename WeightT>
     uint pos = gid.x;
     uint head_idx = gid.y;
     
-    uint kv_head = head_idx / args.kv_mul;
+    uint kv_head_idx = head_idx / args.kv_mul;
     const device float* qh = q + head_idx*args.d_head;
-    const device float* kh = k_cache + args.loff + pos*args.kv_dim + kv_head*args.d_head;
-    device float* atth = att_scores + head_idx*args.seq_len;
+    const device float* kh = k_cache + args.loff + pos*args.kv_dim + kv_head_idx*args.d_head;
+    device float* atth = att_scores + head_idx*args.max_seq_len;
 
     float score = matmul_row<float>(qh, kh, 0, args.d_head, tid.x);
     float scale = 1.0f / sqrt(float(args.d_head));
@@ -362,7 +346,7 @@ template<typename WeightT>
     if (dim_idx >= args.d_head) return;
     
     uint kv_head = head_idx / args.kv_mul;
-    const device float* atth = att_scores + head_idx*args.seq_len;
+    const device float* atth = att_scores + head_idx*args.max_seq_len;
     const device float* vh = v_cache + args.loff + kv_head*args.d_head;
     device float* out = att_out + head_idx*args.d_head;
     
@@ -394,10 +378,10 @@ template<typename WeightT>
     device float* top_scores [[ buffer(3) ]],
     uint tid [[ thread_position_in_grid ]]
 ) {
-    uint lane = tid % 32;
+    uint simd_lane = tid%32;
     
-    float score = (lane < args.n_experts) ? scores[lane] : -FLT_MAX;
-    uint packed = (as_type<uint>(score) & 0xFFFFFF00u) | lane;
+    float score = (simd_lane < args.n_experts) ? scores[simd_lane] : -FLT_MAX;
+    uint packed = (as_type<uint>(score) & 0xFFFFFF00u) | simd_lane;
     
     for (uint i=0; i<args.k; ++i) {
         uint max_packed = simd_max(packed);
@@ -405,10 +389,10 @@ template<typename WeightT>
         float max_score = as_type<float>(max_packed & 0xFFFFFF00u);
         uint max_expert = max_packed & 0xFFu;
         
-        top_experts[i] = as_type<int>(max_expert);
-        top_scores[i] = as_type<float>(max_score);
+        top_experts[i] = max_expert;
+        top_scores[i] = max_score;
         
-        if (lane == max_expert) {
+        if (simd_lane == max_expert) {
             packed = 0u;
         }
     }
@@ -418,9 +402,9 @@ template<typename WeightT>
 #define TOSTRING(x) STRINGIFY(x)
 #pragma message "Metal Version: " TOSTRING(__METAL_VERSION__)
 
-template [[host_name("embed_f32")]] [[kernel]] void embed<float>(constant uint&, device float*, const device float*, uint);
-template [[host_name("embed_f16")]] [[kernel]] void embed<half>(constant uint&, device float*, const device half*, uint);
-template [[host_name("embed_bf16")]] [[kernel]] void embed<bfloat>(constant uint&, device float*, const device bfloat*, uint);
+template [[host_name("embed_f32")]] [[kernel]] void embed<float>(constant size_t&, device float*, const device float*, uint);
+template [[host_name("embed_f16")]] [[kernel]] void embed<half>(constant size_t&, device float*, const device half*, uint);
+template [[host_name("embed_bf16")]] [[kernel]] void embed<bfloat>(constant size_t&, device float*, const device bfloat*, uint);
 
 template [[host_name("linear_proj_f32")]] [[kernel]] void linear_proj<float>(constant LinearProjArgs&, const device float*, const device float*, device float*, uint, uint);
 template [[host_name("linear_proj_f16")]] [[kernel]] void linear_proj<half>(constant LinearProjArgs&, const device half*, const device float*, device float*, uint, uint);

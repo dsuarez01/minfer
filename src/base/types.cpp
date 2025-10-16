@@ -28,7 +28,7 @@ void fp16_t::dequantize_row(float*, size_t, size_t) const {
 void bf16_t::dequantize_row(float* out, size_t row_idx, size_t d_in) const {
     const __bf16* src = reinterpret_cast<const __bf16*>(ptr(row_idx * d_in));
     for (size_t i=0; i<d_in; ++i) {
-        out[i] = vcvtah_f32_bf16(src[i]); // runtime issue w/ const pointer
+        out[i] = static_cast<float>(src[i]); // runtime issue w/ const pointer
     }
 }
 #else

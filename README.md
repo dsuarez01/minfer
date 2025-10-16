@@ -38,7 +38,7 @@ Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia
 | M3 Series                    | Y            | Y            | Y (CPU), Y (GPU, native)   |
 | M4 Series                    | Y            | Y            | Y (CPU), Y (GPU, native)   |
 
-For **CPU support**, I would recommend adjusting the `-march` and `-mtune` flags in `function(apply_arch_flags target_name)` (defined at `./CMakeLists.txt`) to match an ARM Neon version, desired dtype support, and target architecture that is compatible with your system. You'll want to set the flags as follows: `-march=<armv8.X-a>+<fp16 for FP16 support, only supported for armv8.X-a where X>=2>+<bf16 for BF16 support, only supported for armv8.X-a where X>=6>`; `-mtune=<apple-mX>` according to your processor version (`X=1, X=2, X=3, X=4, etc. as new M-series chips are added`).
+For **CPU support**, I would recommend adjusting the `-march` and `-mtune` flags in `function(apply_arch_flags target_name)` (defined at `./CMakeLists.txt`) to match an ARM Neon version, desired dtype support, and target architecture that is compatible with your system. You'll want to set the flags as follows: `-march=<armv8.X-a>+<fp16 for FP16 support, only supported for armv8.X-a where X>=2>+<bf16 for BF16 support, only supported for armv8.X-a where X>=6>`; `-mtune=<apple-mX>` according to your processor version (`X=1, X=2, X=3, X=4, etc. as new M-series chips are added`). Set the `USE_FP16` and `USE_BF16` values accordingly (0 for unset i.e. no support, 1 for set i.e. support).
 
 For **GPU support**, I would recommend keeping Metal 3.2 as the version (see [this link](https://support.apple.com/en-us/102894) for more information about Metal support across M-series chips + OS versions), and adjusting the `-target` flag in `xcrun -sdk macosx metal -std=metal3.2 -target air64-apple-macos26.0 -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR}` as needed (see `./src/CMakeLists.txt`). The relevant section of commands here will precompile the shader source file (`./src/ops/kernels.metal`) into a .metallib library, which is then embedded as a byte array into the program for use by the Metal interface (credit: [zeux/calm](https://github.com/zeux/calm)).
 
@@ -60,8 +60,11 @@ cd minfer
 git submodule update --init --recursive
 
 # Build (see "Precision Support" section for adjustments to arch flags as needed)
-cmake -S . -B build # NOTE: -DCMAKE_BUILD_TYPE is Release by default, pass in Debug if needed
-cmake --build build --parallel
+# NOTE: -DCMAKE_BUILD_TYPE is Release by default, pass in Debug or RelWithDebInfo if needed
+# If for any reason asan or ubsan needed: pass in -DENABLE_SANITIZERS=ON
+# OpenMP threading support enabled by default (-DENABLE_THREADING=OFF to disable)
+cmake -S . -B build
+cmake --build build
 
 ############ PYTHON CONVERSION SCRIPT ############
 # NOTE: Convert the model using the gpt2_convert.py script BEFORE running inference, see ./python for more info
@@ -114,27 +117,30 @@ The benchmark consists of a 512-token prefill and 128-token generation phase (re
 
 This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations, and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
 
-|     (M2 Pro CPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |
-|------------------------------------------------|-----------------------------------|----------------------------------|
-| Qwen3-0.6B-FP32                                |               37.5                |           46.52 ± 0.46           |
-| Qwen3-0.6B-BF16                                |               57.2                |              N/A*                |
-| Qwen3-1.7B-BF16                                |               27.0                |              N/A*                |
+|     (M2 Pro CPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
+|------------------------------------------------|-----------------------------------|----------------------------------|-----------------------------------|---------------------------------|
+| Qwen3-0.6B-BF16                                |          55.31 ± 1.32             |              N/A*                |          71.11 ± 1.28             |               N/A**             |
+| Qwen3-0.6B-FP16                                |          55.44 ± 0.52             |           87.33 ± 0.53           |          69.55 ± 1.17             |               N/A**             |
+| Qwen3-0.6B-FP32                                |          37.26 ± 0.18             |           46.52 ± 0.46           |          97.53 ± 3.02             |               N/A**             |
+| Qwen3-1.7B-BF16                                |          26.52 ± 0.60             |              N/A*                |          98.52 ± 2.70             |               N/A**             |
 
 \* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
+\** llama.cpp does not report memory bandwidth
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models before testing. I've yet to find FP16 versions of the 0.6B and 1.7B models, but will test them if and when they become available. Due to cache layer sizing (see the stats for the [M2 Pro](https://en.wikipedia.org/wiki/Apple_M2), for example), I found that these were the only models that could be reliably tested (without cache misses, thrashing, etc.).
 
 ### Performance - GPU Inference Results
 
-|     (M2 Pro GPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)     |
-|------------------------------------------------|-----------------------------------|-----------------------------------|
-| Qwen3-0.6B-BF16                                |              116.46               |            7.80 ± 0.05*           |
-| Qwen3-0.6B-FP16                                |              116.80               |            106.75 ± 0.31          |
-| Qwen3-0.6B-FP32                                |              66.50                |            63.47 ± 0.06           |
-| Qwen3-1.7B-BF16                                |              48.33                |            3.01 ± 0.06*           |
-| Qwen3-4B-Instruct-2507-FP16                    |              21.04                |            20.57 ± 0.40           |
+|     (M2 Pro GPU, avg of 5 runs for Minfer)     |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)     |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
+|------------------------------------------------|-----------------------------------|-----------------------------------|-----------------------------------|---------------------------------|
+| Qwen3-0.6B-BF16                                |         114.38 ± 1.85             |            7.80 ± 0.05*           |          148.08 ± 0.32            |               N/A**             |
+| Qwen3-0.6B-FP16                                |         115.82 ± 0.96             |            106.75 ± 0.31          |          149.18 ± 0.33            |               N/A**             |
+| Qwen3-0.6B-FP32                                |         66.13 ± 0.28              |            63.47 ± 0.06           |          177.02 ± 0.63            |               N/A**             |
+| Qwen3-1.7B-BF16                                |         47.94 ± 0.09              |            3.01 ± 0.06*           |          168.38 ± 0.82            |               N/A**             |
+| Qwen3-4B-Instruct-2507-FP16                    |         21.05 ± 0.02              |            20.57 ± 0.40           |          149.45 ± 0.36            |               N/A**             |
 
-\* BF16 inference using the Metal backend seems to be buggy for my particular build config. There are several related issues on the llama.cpp repo.
+\* BF16 inference using the Metal backend seems to be buggy for my particular build config. There are several related issues on the llama.cpp repo. 
+\** llama.cpp does not report memory bandwidth
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models (refer to the [Python script README](./python/README.md#gguf-tokenizer-data-conversion-tool-gpt2_convertpy)) before testing. I would test larger models, but am limited by the RAM available on my GPU: the [recommended max working set size](https://stencel.io/posts/apple-silicon-limitations-with-usage-on-local-llm%20.html) — which functions more as a hard limit on mem. usage, as noted in the article — is 75% of the available physical RAM, so ~12 GB for 16 GB system, ~24GB for a 32 GB system, etc.
 

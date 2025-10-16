@@ -15,8 +15,8 @@ float GenStats::get_elapsed_sec() const {
 
 void GenStats::print_stats() const {
     std::cout << "Number of tokens generated: " << this->num_tokens_gen << " toks\n"
-              << "Prefill time: " << std::fixed << std::setprecision(3) << this->prefill_time << " sec(s)\n"
-              << "Time to first token: " << std::fixed << std::setprecision(3) << this->ttft << " sec(s)\n"
+              << "Prefill time: " << std::fixed << std::setprecision(2) << this->prefill_time << " sec(s)\n"
+              << "Time to first token: " << std::fixed << std::setprecision(2) << this->ttft << " sec(s)\n"
               << "Generation throughput: " << std::setprecision(2) << this->throughput << " tok/sec\n"
-              << "Mem. Bandwidth: " << std::setprecision(3) << this->bandwidth << " GB/sec" << std::endl;
+              << "Mem. Bandwidth: " << std::setprecision(2) << this->bandwidth << " GB/sec" << std::endl;
 }

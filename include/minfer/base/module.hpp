@@ -79,8 +79,7 @@ protected:
 class GQA : public BaseLayer {
 public:
     GQA(
-        int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary,
-        size_t max_seq_len,
+        int block_idx, int d_model, int n_heads, int n_kv_heads, int d_head, int d_rotary, int max_seq_len,
         float eps, float freq_base,
         TPtr wq, TPtr wk, TPtr wv,
         TPtr wo, TPtr wq_norm, TPtr wk_norm,
@@ -90,8 +89,7 @@ public:
     virtual void forward(std::shared_ptr<RunState> run_state) = 0;
 
 protected:
-    int block_idx, d_model, n_heads, n_kv_heads, d_head, d_rotary;
-    size_t max_seq_len;
+    int block_idx, d_model, n_heads, n_kv_heads, d_head, d_rotary, max_seq_len;
     float eps, freq_base;
     
     TPtr wq, wk, wv, wo, wq_norm, wk_norm, w_attnnorm;
