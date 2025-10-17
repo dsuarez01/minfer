@@ -64,6 +64,9 @@ git submodule update --init --recursive
 # If for any reason asan or ubsan needed: pass in -DENABLE_SANITIZERS=ON
 # OpenMP threading support enabled by default (-DENABLE_THREADING=OFF to disable)
 cmake -S . -B build
+
+# --target <target_1> <target_2> etc. to specify targets to build: minfer, apps, tests
+# --parallel to speed up build time with multiple workers
 cmake --build build
 
 ############ PYTHON CONVERSION SCRIPT ############
