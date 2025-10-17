@@ -61,7 +61,7 @@ git submodule update --init --recursive
 
 # Build (see "Precision Support" section for adjustments to arch flags as needed)
 # NOTE: -DCMAKE_BUILD_TYPE is Release by default, pass in Debug or RelWithDebInfo if needed
-# If for any reason asan or ubsan needed: pass in -DENABLE_SANITIZERS=ON
+# If asan or ubsan needed: pass in -DENABLE_SANITIZERS=ON
 # OpenMP threading support enabled by default (-DENABLE_THREADING=OFF to disable)
 cmake -S . -B build
 
