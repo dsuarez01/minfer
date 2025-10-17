@@ -128,6 +128,7 @@ This repo currently doesn't support batch decoding for tokens. Thus, the prefill
 | Qwen3-1.7B-BF16                                |          26.52 ± 0.60             |              N/A*                |          98.52 ± 2.70             |               N/A**             |
 
 \* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
+
 \** llama.cpp does not report memory bandwidth
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models before testing. I've yet to find FP16 versions of the 0.6B and 1.7B models, but will test them if and when they become available. Due to cache layer sizing (see the stats for the [M2 Pro](https://en.wikipedia.org/wiki/Apple_M2), for example), I found that these were the only models that could be reliably tested (without cache misses, thrashing, etc.).
@@ -142,7 +143,8 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 | Qwen3-1.7B-BF16                                |         47.94 ± 0.09              |            3.01 ± 0.06*           |          168.38 ± 0.82            |               N/A**             |
 | Qwen3-4B-Instruct-2507-FP16                    |         21.05 ± 0.02              |            20.57 ± 0.40           |          149.45 ± 0.36            |               N/A**             |
 
-\* BF16 inference using the Metal backend seems to be buggy for my particular build config. There are several related issues on the llama.cpp repo. 
+\* BF16 inference using the Metal backend seems to be buggy for my particular build config. There are several related issues on the llama.cpp repo.
+
 \** llama.cpp does not report memory bandwidth
 
 Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model providers for access to the recommended GGUF model sizes and precisions listed above, and ensure that you've converted the models (refer to the [Python script README](./python/README.md#gguf-tokenizer-data-conversion-tool-gpt2_convertpy)) before testing. I would test larger models, but am limited by the RAM available on my GPU: the [recommended max working set size](https://stencel.io/posts/apple-silicon-limitations-with-usage-on-local-llm%20.html) — which functions more as a hard limit on mem. usage, as noted in the article — is 75% of the available physical RAM, so ~12 GB for 16 GB system, ~24GB for a 32 GB system, etc.
