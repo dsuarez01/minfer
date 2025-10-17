@@ -20,7 +20,7 @@ void fp16_t::dequantize_row(float* out, size_t row_idx, size_t d_in) const {
 }
 #else
 void fp16_t::dequantize_row(float*, size_t, size_t) const {
-    assert(false && "FP16 dequantize_row: USE_ARM64 or USE_FP16 not set/defined");
+    static_assert(false, "FP16 dequantize_row requires USE_ARM64 and USE_FP16");
 }
 #endif
 
@@ -33,6 +33,6 @@ void bf16_t::dequantize_row(float* out, size_t row_idx, size_t d_in) const {
 }
 #else
 void bf16_t::dequantize_row(float*, size_t, size_t) const {
-    assert(false && "FP16 dequantize_row: USE_ARM64 or USE_FP16 not set/defined");
+    static_assert(false, "BF16 dequantize_row requires USE_ARM64 and USE_BF16");
 }
 #endif

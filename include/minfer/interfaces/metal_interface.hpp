@@ -39,15 +39,15 @@ namespace MetalManager {
     // stubs
     #ifndef USE_METAL
         // resource management
-        inline MTL::Buffer* upload(void*, size_t) { assert(false && "Metal backend not detected, this stub should never be called"); return nullptr; }
-        inline void release(MTL::Buffer*) { assert(false && "Metal backend not detected, this stub should never be called"); return; }
-        inline void* cpu_ptr(MTL::Buffer*) { assert (false && "Metal backend not detected, this stub should never be called"); return nullptr; }
+        inline MTL::Buffer* upload(void*, size_t) { static_assert(false, "Metal backend not detected, this stub should never be called"); return nullptr; }
+        inline void release(MTL::Buffer*) { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
+        inline void* cpu_ptr(MTL::Buffer*) { static_assert(false, "Metal backend not detected, this stub should never be called"); return nullptr; }
 
         // dispatch-related
-        inline void init() { assert(false && "Metal backend not detected, this stub should never be called"); return; }
-        inline void begin_frame() { assert(false && "Metal backend not detected, this stub should never be called"); return; }
-        inline void end_frame() { assert(false && "Metal backend not detected, this stub should never be called"); return; }
-        inline void dispatch1d(const char*, size_t, size_t, const void*, size_t, MTL::Buffer**, size_t) { assert(false && "Metal backend not detected, this stub should never be called"); return; }
-        inline void dispatch2d(const char*, size_t, size_t, size_t, const void*, size_t, MTL::Buffer**, size_t) { assert(false && "Metal backend not detected, this stub should never be called"); return; }
+        inline void init() { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
+        inline void begin_frame() { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
+        inline void end_frame() { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
+        inline void dispatch1d(const char*, size_t, size_t, const void*, size_t, MTL::Buffer**, size_t) { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
+        inline void dispatch2d(const char*, size_t, size_t, size_t, const void*, size_t, MTL::Buffer**, size_t) { static_assert(false, "Metal backend not detected, this stub should never be called"); return; }
     #endif
 }

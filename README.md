@@ -173,6 +173,7 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 - [x] Manual SIMD for the FP32, FP16, BF16 matmuls using NEON intrinsics
 - [x] Refactor loader, tokenizer, improve chat template handling
 - [x] Implementing operations for the GPU
+- [ ] Refactor compile-time, runtime checks, runtime validation, exception safety
 - [ ] Quantizing KV cache
 - [ ] Add support for multi-turn conversation
 - [ ] Refactor code to support more models, tokenizers, activation types, compilers, ISAs, OS versions, etc.
