@@ -120,12 +120,19 @@ The benchmark consists of a 512-token prefill and 128-token generation phase (re
 
 This repo currently doesn't support batch decoding for tokens. Thus, the prefill statistics are not competitive with respect to existing inference engine implementations, and are therefore omitted from the results reported here. Tested with 4k max context, seed 30 on 2023 M2 Pro Macbook Pro (6 performance cores, 4 efficiency in the ["binned model"](https://en.wikipedia.org/wiki/Apple_M2)).
 
-|     (M2 Pro CPU, tg-128)                       |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)    |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
-|------------------------------------------------|-----------------------------------|----------------------------------|-----------------------------------|---------------------------------|
-| Qwen3-0.6B-BF16                                |          55.31 ± 1.32             |              N/A*                |          71.11 ± 1.28             |               N/A**             |
-| Qwen3-0.6B-FP16                                |          55.44 ± 0.52             |           87.33 ± 0.53           |          69.55 ± 1.17             |               N/A**             |
-| Qwen3-0.6B-FP32                                |          37.26 ± 0.18             |           46.52 ± 0.46           |          97.53 ± 3.02             |               N/A**             |
-| Qwen3-1.7B-BF16                                |          26.52 ± 0.60             |              N/A*                |          98.52 ± 2.70             |               N/A**             |
+|     (M2 Pro CPU, tg-128 tok/s)        |              Minfer               |            llama.cpp             |
+|---------------------------------------|-----------------------------------|----------------------------------|
+| Qwen3-0.6B-BF16                       |          55.31 ± 1.32             |              N/A*                |
+| Qwen3-0.6B-FP16                       |          55.44 ± 0.52             |           87.33 ± 0.53           |
+| Qwen3-0.6B-FP32                       |          37.26 ± 0.18             |           46.52 ± 0.46           |
+| Qwen3-1.7B-BF16                       |          26.52 ± 0.60             |              N/A*                |
+
+|       (M2 Pro CPU, tg-128 GB/s)       |              Minfer               |            llama.cpp             |
+|---------------------------------------|-----------------------------------|----------------------------------|
+| Qwen3-0.6B-BF16                       |          71.11 ± 1.28             |               N/A**              |
+| Qwen3-0.6B-FP16                       |          69.55 ± 1.17             |               N/A**              |
+| Qwen3-0.6B-FP32                       |          97.53 ± 3.02             |               N/A**              |
+| Qwen3-1.7B-BF16                       |          98.52 ± 2.70             |               N/A**              |
 
 \* llama.cpp does not support BF16 CPU-only inference for M2 Pro / the associated ISA.
 
@@ -135,13 +142,21 @@ Refer to [Unsloth AI](https://huggingface.co/unsloth) or other reputable model p
 
 ### Performance - GPU Inference Results
 
-|                (M2 Pro GPU, tg-128)            |      Minfer tg-128 (tok/s)        |    Llama-bench tg-128 (tok/s)     |      Minfer tg-128 (GB/s)         |    Llama-bench tg-128 (GB/s)    |
-|------------------------------------------------|-----------------------------------|-----------------------------------|-----------------------------------|---------------------------------|
-| Qwen3-0.6B-BF16                                |         114.38 ± 1.85             |            7.80 ± 0.05*           |          148.08 ± 0.32            |               N/A**             |
-| Qwen3-0.6B-FP16                                |         115.82 ± 0.96             |            106.75 ± 0.31          |          149.18 ± 0.33            |               N/A**             |
-| Qwen3-0.6B-FP32                                |         66.13 ± 0.28              |            63.47 ± 0.06           |          177.02 ± 0.63            |               N/A**             |
-| Qwen3-1.7B-BF16                                |         47.94 ± 0.09              |            3.01 ± 0.06*           |          168.38 ± 0.82            |               N/A**             |
-| Qwen3-4B-Instruct-2507-FP16                    |         21.05 ± 0.02              |            20.57 ± 0.40           |          149.45 ± 0.36            |               N/A**             |
+|         (M2 Pro GPU, tg-128 tok/s)             |             Minfer                |             llama.cpp             |
+|------------------------------------------------|-----------------------------------|-----------------------------------|
+| Qwen3-0.6B-BF16                                |         114.38 ± 1.85             |            7.80 ± 0.05*           |
+| Qwen3-0.6B-FP16                                |         115.82 ± 0.96             |            106.75 ± 0.31          |
+| Qwen3-0.6B-FP32                                |         66.13 ± 0.28              |            63.47 ± 0.06           |
+| Qwen3-1.7B-BF16                                |         47.94 ± 0.09              |            3.01 ± 0.06*           |
+| Qwen3-4B-Instruct-2507-FP16                    |         21.05 ± 0.02              |            20.57 ± 0.40           |
+
+|          (M2 Pro GPU, tg-128 GB/s)    |              Minfer               |            llama.cpp            |
+|---------------------------------------|-----------------------------------|---------------------------------|
+| Qwen3-0.6B-BF16                       |          148.08 ± 0.32            |               N/A**             |
+| Qwen3-0.6B-FP16                       |          149.18 ± 0.33            |               N/A**             |
+| Qwen3-0.6B-FP32                       |          177.02 ± 0.63            |               N/A**             |
+| Qwen3-1.7B-BF16                       |          168.38 ± 0.82            |               N/A**             |
+| Qwen3-4B-Instruct-2507-FP16           |          149.45 ± 0.36            |               N/A**             |
 
 \* BF16 inference using the Metal backend seems to be buggy for my particular build config. There are several related issues on the llama.cpp repo.
 
