@@ -25,7 +25,7 @@
 
 This project currently supports non-sharded Qwen3 GGUF model files that come bundled with the corresponding GGUF tokenizer data.
 
-Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia), `>=` M2 chip series, C++17. Project will likely not compile with `g/g++`, so use `clang/clang++` if possible. Note that `clang/clang++` are shipped with the XCode Command Line Tools (CLT) by default, which you can check at `/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin` or similar, depending on your OS version. Ensure that you have the XCode CLT corresponding to your OS version installed. See [Precision Support](#overview---precision-support) section below for more details.
+Recommended OS version, chip set, C++ version, compiler: `>=` MacOS v15 (Sequoia), `>=` M2 chip series, C++17, clang/clang++. (Note that as of now, the project will not compile with g/g++.) `clang/clang++` are shipped with the XCode Command Line Tools (CLT) by default, which you can check at `/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin` or similar, depending on your OS version. Ensure that you have the XCode CLT corresponding to your OS version installed. See [Precision Support](#overview---precision-support) section below for more details.
 
 [Work-in-progress: broader support / more robust error handling in the build config, please excuse any errors and/or bugs]
 
@@ -107,8 +107,8 @@ OMP_NUM_THREADS=6 ./build/apps/benchmark <path_to_gguf_file> -d cpu -s 42
 OMP_NUM_THREADS=6 ./build/apps/generate <path_to_gguf_file> -d cpu -p "Hello world" -m 4096 -s 42 -i
 
 # Usage examples for GPU inference
-./build/apps/benchmark <path_to_gguf_file> -d gpu -s 42
-./build/apps/generate <path_to_gguf_file> -d gpu -p "Hello world" -m 4096 -s 42 -i
+./build/apps/benchmark <path_to_gguf_file> -d metal -s 42
+./build/apps/generate <path_to_gguf_file> -d metal -p "Hello world" -m 4096 -s 42 -i
 ```
 
 
